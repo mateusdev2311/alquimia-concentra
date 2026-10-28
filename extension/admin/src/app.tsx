@@ -3,6 +3,7 @@ import { criarApi, lerConfigInstalacao } from '../../comum/api';
 import { Aviso } from '../../comum/componentes';
 import { Icone, NomeIcone } from '../../comum/icones';
 import type { CtxOmni, Omni } from '../../comum/omni';
+import { Ativacao } from './ativacao';
 import { AbaAuditoria, AbaConexao, AbaMensagem, AbaTipos } from './configuracoes';
 import { AbaPainel } from './painel';
 
@@ -19,6 +20,8 @@ const ABAS: { id: Aba; rotulo: string; icone: NomeIcone }[] = [
 export function App({ omni, ctx }: { omni: Omni; ctx: CtxOmni }) {
   const { apiUrl, chave } = lerConfigInstalacao(ctx, 'chave_admin');
   const api = useMemo(() => (apiUrl && chave ? criarApi({ omni, apiUrl, chave, ctx }) : null), [omni, apiUrl, chave, ctx]);
+  // Sem chave: só a ativação (rota pública, que funciona uma vez).
+  const apiSemChave = useMemo(() => (apiUrl ? criarApi({ omni, apiUrl, chave: '', ctx }) : null), [omni, apiUrl, ctx]);
   const [aba, setAba] = useState<Aba>('painel');
 
   return (
@@ -32,8 +35,10 @@ export function App({ omni, ctx }: { omni: Omni; ctx: CtxOmni }) {
           <p class="kt-muted">Integração do atendimento com o Concentra: impacto, configuração e auditoria.</p>
         </div>
       </header>
-      {!api ? (
-        <Aviso tipo="erro">Configure a extensão com o endereço da integração e a chave de admin (CHAVE_ADMIN do serviço no Doca).</Aviso>
+      {!apiSemChave ? (
+        <Aviso tipo="erro">Configure a extensão com o endereço da integração.</Aviso>
+      ) : !api ? (
+        <Ativacao api={apiSemChave} />
       ) : (
         <>
           <nav class="kt-abas" role="tablist">

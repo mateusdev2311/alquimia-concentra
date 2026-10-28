@@ -1,11 +1,10 @@
-import { CanActivate, ExecutionContext, Inject, Injectable, SetMetadata } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
-import { ConfigApp, CONFIG_APP } from '../comum/config';
-import { compararSeguro } from '../comum/cripto';
 import { ErroApi } from '../comum/erros';
+import { AcessoService, Papel } from './acesso.service';
 
-export type Papel = 'atendimento' | 'admin';
+export type { Papel } from './acesso.service';
 
 const CHAVE_PAPEL = 'papelExigido';
 
@@ -37,21 +36,18 @@ function usuarioDe(req: Request): Usuario {
 @Injectable()
 export class ChaveGuard implements CanActivate {
   constructor(
-    @Inject(CONFIG_APP) private readonly config: ConfigApp,
+    private readonly acesso: AcessoService,
     private readonly reflector: Reflector,
   ) {}
 
-  canActivate(contexto: ExecutionContext): boolean {
+  async canActivate(contexto: ExecutionContext): Promise<boolean> {
     const req = contexto.switchToHttp().getRequest<RequisicaoAutenticada>();
     const chave = req.header('X-Alquimia-Chave')?.replace(/\s+/g, '') ?? '';
-    const papel: Papel | null = !chave
-      ? null
-      : compararSeguro(chave, this.config.chaveAdmin)
-        ? 'admin'
-        : compararSeguro(chave, this.config.chaveAtendimento)
-          ? 'atendimento'
-          : null;
+    const papel = await this.acesso.papelDa(chave);
     if (!papel) {
+      if (!(await this.acesso.ativada())) {
+        throw new ErroApi(401, 'NAO_ATIVADA', 'A integração ainda não foi ativada. Um administrador ativa pela extensão Alquimia × Concentra — Admin.');
+      }
       throw new ErroApi(401, 'CHAVE_INVALIDA', 'Chave da integração inválida. Peça ao administrador para conferir a configuração da extensão.');
     }
     const exigido = this.reflector.getAllAndOverride<Papel | undefined>(CHAVE_PAPEL, [contexto.getHandler(), contexto.getClass()]);

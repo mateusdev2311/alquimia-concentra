@@ -1,4 +1,6 @@
 import { DynamicModule, Module } from '@nestjs/common';
+import { AcessoService } from './acesso/acesso.service';
+import { AtivacaoController } from './acesso/ativacao.controller';
 import { AuditoriaService } from './acesso/auditoria.service';
 import { AdminController } from './admin/admin.controller';
 import { ExtensaoController } from './arquivos-extensao/extensao.controller';
@@ -11,7 +13,6 @@ import { ConcentraClient } from './concentra/concentra.client';
 import { ConsultasController } from './consultas/consultas.controller';
 import { OrcamentosService } from './consultas/orcamentos.service';
 import { StatusService } from './consultas/status.service';
-import { OpenAiClient } from './ia/openai.client';
 import { ConfiguracoesService } from './orcamento/configuracoes.service';
 import { RascunhosController } from './orcamento/rascunhos.controller';
 import { RascunhosService } from './orcamento/rascunhos.service';
@@ -19,7 +20,7 @@ import { WebhookKentroController } from './orcamento/webhook-kentro.controller';
 import { SaudeController } from './saude/saude.controller';
 
 export interface OpcoesApp {
-  /** Substitui o fetch de produção (os testes usam uma Concentra e uma OpenAI falsas). */
+  /** Substitui o fetch de produção (os testes usam uma Concentra falsa). */
   fetch?: Fetch;
   /** Substitui as esperas entre tentativas (os testes não esperam). */
   esperar?: Esperar;
@@ -36,7 +37,7 @@ export class AppModule {
         { provide: ESPERAR, useValue: opcoes.esperar ?? esperarDeVerdade },
         PrismaService,
         ConcentraClient,
-        OpenAiClient,
+        AcessoService,
         CatalogoService,
         SincronizacaoService,
         OrcamentosService,
@@ -45,7 +46,7 @@ export class AppModule {
         ConfiguracoesService,
         RascunhosService,
       ],
-      controllers: [SaudeController, ExtensaoController, ConsultasController, RascunhosController, WebhookKentroController, AdminController],
+      controllers: [SaudeController, ExtensaoController, AtivacaoController, ConsultasController, RascunhosController, WebhookKentroController, AdminController],
     };
   }
 }

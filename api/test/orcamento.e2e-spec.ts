@@ -2,10 +2,11 @@ import { INestApplication } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import request from 'supertest';
 import { CatalogoService } from '../src/catalogo/catalogo.service';
-import { CHAVE_ADMIN, CHAVE_ATENDIMENTO, criarAppDeTeste, fetchFalso, limparBanco } from './app';
+import { criarAppDeTeste, fetchFalso, limparBanco } from './app';
 
 const prisma = new PrismaClient();
-const H = { 'X-Alquimia-Chave': CHAVE_ATENDIMENTO, 'X-Kentro-Usuario-Id': '7', 'X-Kentro-Usuario-Nome': encodeURIComponent('Thaís') };
+let H: Record<string, string> = {};
+let chaveAdmin = '';
 
 const DADOS = {
   clienteId: null,
@@ -30,6 +31,34 @@ const DADOS = {
   ],
 };
 
+const LEITURA = {
+  eh_receita: true,
+  legivel: true,
+  paciente: 'Joãozinho Teste',
+  prescritor: 'Dra Beltrana',
+  conselho: 'CRM',
+  numero_conselho: '0000134501',
+  uf_conselho: 'SP',
+  data_receita: null,
+  controle_especial: false,
+  observacoes: null,
+  itens: [
+    {
+      tipo_item: 'manipulado',
+      forma_farmaceutica: 'cápsula',
+      quantidade_total: '30',
+      unidade_quantidade: 'caps',
+      posologia: '1 ao dia',
+      componentes: [{ nome: 'Vitamina D3', dosagem: 2000, unidade: 'ui', texto_original: 'Vit D3 2.000UI', confianca: '0.95' }],
+      nome_produto: null,
+      apresentacao: null,
+      quantidade_embalagens: null,
+      confianca: 0.9,
+      observacao: null,
+    },
+  ],
+};
+
 let gerar: () => unknown;
 const falso = fetchFalso({
   concentra: (funcao, corpo) => {
@@ -42,45 +71,6 @@ const falso = fetchFalso({
     }
     return [{ erro: 'Nenhum registro encontrado para: X' }];
   },
-  openai: () => ({
-    output: [
-      {
-        type: 'message',
-        content: [
-          {
-            type: 'output_text',
-            text: JSON.stringify({
-              eh_receita: true,
-              legivel: true,
-              paciente: 'Joãozinho Teste',
-              prescritor: 'Dra Beltrana',
-              conselho: 'CRM',
-              numero_conselho: '0000134501',
-              uf_conselho: 'SP',
-              data_receita: null,
-              controle_especial: false,
-              observacoes: null,
-              itens: [
-                {
-                  tipo_item: 'manipulado',
-                  forma_farmaceutica: 'cápsula',
-                  quantidade_total: 30,
-                  unidade_quantidade: 'caps',
-                  posologia: '1 ao dia',
-                  componentes: [{ nome: 'Vitamina D3', dosagem: 2000, unidade: 'ui', texto_original: 'Vit D3 2.000UI', confianca: 0.95 }],
-                  nome_produto: null,
-                  apresentacao: null,
-                  quantidade_embalagens: null,
-                  confianca: 0.9,
-                  observacao: null,
-                },
-              ],
-            }),
-          },
-        ],
-      },
-    ],
-  }),
 });
 
 const chamadasGerar = () => falso.chamadas.filter((c) => c.corpo.funcao === 'gerar_orcamento');
@@ -99,6 +89,10 @@ afterAll(async () => {
 beforeEach(async () => {
   await limparBanco(prisma);
   falso.chamadas.length = 0;
+  // Ativação pela extensão de admin: as chaves só existem a partir daqui.
+  const ativacao = await request(app.getHttpServer()).post('/v1/ativacao').expect(201);
+  chaveAdmin = ativacao.body.chaveAdmin;
+  H = { 'X-Alquimia-Chave': ativacao.body.chaveAtendimento, 'X-Kentro-Usuario-Id': '7', 'X-Kentro-Usuario-Nome': encodeURIComponent('Thaís') };
   gerar = () => [{ paciente: 'MARIA TESTE', fone: '11991234567', prescritor: 'DR FULANO', crm: '134501', items: [], valor_liquido: 142.9, valor_bruto: 158 }];
 });
 
@@ -112,7 +106,15 @@ describe('acesso', () => {
   it('recusa sem chave e separa a chave de admin', async () => {
     await request(app.getHttpServer()).get('/v1/status').expect(401);
     await request(app.getHttpServer()).get('/v1/admin/status').set(H).expect(403);
-    await request(app.getHttpServer()).get('/v1/admin/status').set({ 'X-Alquimia-Chave': CHAVE_ADMIN }).expect(200);
+    await request(app.getHttpServer()).get('/v1/admin/status').set({ 'X-Alquimia-Chave': chaveAdmin }).expect(200);
+  });
+
+  it('ativa uma vez só e troca a chave de atendimento', async () => {
+    const r = await request(app.getHttpServer()).post('/v1/ativacao').expect(409);
+    expect(r.body.erro.codigo).toBe('JA_ATIVADA');
+    const nova = await request(app.getHttpServer()).post('/v1/admin/chaves/atendimento').set({ 'X-Alquimia-Chave': chaveAdmin }).expect(201);
+    await request(app.getHttpServer()).get('/v1/status').set(H).expect(401);
+    await request(app.getHttpServer()).get('/v1/status').set({ 'X-Alquimia-Chave': nova.body.chaveAtendimento }).expect(200);
   });
 
   it('"não encontrado" da Concentra (HTTP 200 + erro) vira lista vazia', async () => {
@@ -169,8 +171,8 @@ describe('envio ao Concentra', () => {
   });
 });
 
-describe('receita → orçamento', () => {
-  it('lê a receita, casa com o cadastro e o prescritor, e deixa pronto para revisar', async () => {
+describe('receita → orçamento (leitura pela IA da Kentro)', () => {
+  async function prepararCadastro() {
     await prisma.produto.createMany({
       data: [
         { codigo: '00101477', descricao: 'VIT D3 (DIL.P/CAPSULA)', familia: '00', unidade: 'G', preco: 1, controlado: false, portarias: [], excluido: false, sinonimo: false },
@@ -179,31 +181,54 @@ describe('receita → orçamento', () => {
     });
     await prisma.prescritor.create({ data: { chave: 'CRM-SP-134501', conselho: 'CRM', uf: 'SP', numero: '134501', nome: 'DRA BELTRANA CADASTRADA' } });
     await app.get(CatalogoService).recarregar();
+    const leitura = await request(app.getHttpServer()).get('/v1/admin/leitura').set({ 'X-Alquimia-Chave': chaveAdmin }).expect(200);
+    expect(leitura.body.instrucao).toContain('Responda SOMENTE com um JSON');
+    return new URL(leitura.body.url).pathname;
+  }
 
+  it('pelo cartão: rascunho "lendo", a automação devolve o JSON e o orçamento fica pronto para revisar', async () => {
+    const caminho = await prepararCadastro();
     const r = await request(app.getHttpServer())
-      .post('/v1/rascunhos/ler-receita')
+      .post('/v1/rascunhos/aguardar-leitura')
       .set(H)
-      .send({ chatId: '57', telefone: '5511991234567', nomeContato: 'Mãe do Joãozinho', arquivo: { base64: Buffer.from('jpg').toString('base64'), mimetype: 'image/jpeg', referencia: 'f1' } })
+      .send({ chatId: '57', telefone: '5511991234567', nomeContato: 'Mãe do Joãozinho', arquivo: { referencia: '8821', mimetype: 'image/jpeg', nome: 'receita.jpg' } })
       .expect(201);
-    expect(r.body.status).toBe('lendo');
+    expect(r.body).toMatchObject({ status: 'lendo', novo: true });
 
-    let rascunho = r.body;
-    for (let i = 0; i < 50 && rascunho.status === 'lendo'; i++) {
-      await new Promise((ok) => setTimeout(ok, 100));
-      rascunho = (await request(app.getHttpServer()).get(`/v1/rascunhos/${r.body.id}`).set(H)).body;
-    }
-    expect(rascunho.status).toBe('pronto');
-    const [formula] = rascunho.dados.formulas;
+    // A mesma foto de novo não dispara outra leitura.
+    const repetida = await request(app.getHttpServer()).post('/v1/rascunhos/aguardar-leitura').set(H).send({ chatId: '57', arquivo: { referencia: '8821' } }).expect(201);
+    expect(repetida.body).toMatchObject({ id: r.body.id, novo: false });
+
+    // O que a automação manda: o resultado do aiProcessFile vem como TEXTO (variável serializada), às vezes com ```json.
+    await request(app.getHttpServer())
+      .post(caminho)
+      .send({ chatId: 57, rascunhoId: r.body.id, leitura: '```json\n' + JSON.stringify(LEITURA) + '\n```', arquivoId: 8821, clienteId: '' })
+      .expect(200);
+
+    const pronto = (await request(app.getHttpServer()).get(`/v1/rascunhos/${r.body.id}`).set(H).expect(200)).body;
+    expect(pronto.status).toBe('pronto');
+    const [formula] = pronto.dados.formulas;
     expect(formula).toMatchObject({ tipoItem: 'manipulado', forma: 'Cápsulas', qsp: 30 });
-    expect(formula.componentes[0]).toMatchObject({ codigo: '00101477', dosagem: 2000, unidade: 'UI', lido: 'Vit D3 2.000UI' });
-    expect(rascunho.dados).toMatchObject({ prescritor: 'DRA BELTRANA CADASTRADA', crm: '134501', paciente: 'JOAOZINHO TESTE' });
+    expect(formula.componentes[0]).toMatchObject({ codigo: '00101477', dosagem: 2000, unidade: 'UI', lido: 'Vit D3 2.000UI', confianca: 0.95 });
+    expect(pronto.dados).toMatchObject({ prescritor: 'DRA BELTRANA CADASTRADA', crm: '134501', paciente: 'JOAOZINHO TESTE' });
+  });
 
-    // A mesma foto de novo não gera outra leitura.
-    const repetida = await request(app.getHttpServer())
-      .post('/v1/rascunhos/ler-receita')
-      .set(H)
-      .send({ chatId: '57', arquivo: { base64: 'eA==', mimetype: 'image/jpeg', referencia: 'f1' } })
-      .expect(201);
-    expect(repetida.body.id).toBe(r.body.id);
+  it('pré-montagem: a mensagem recebida cria o rascunho sozinha, uma vez por arquivo', async () => {
+    const caminho = await prepararCadastro();
+    const corpo = { chatId: '58', leitura: LEITURA, arquivoId: '9001', telefone: '5511991234567', rascunhoId: '' };
+    const a = await request(app.getHttpServer()).post(caminho).send(corpo).expect(200);
+    const b = await request(app.getHttpServer()).post(caminho).send(corpo).expect(200);
+    expect(a.body.status).toBe('pronto');
+    expect(b.body.id).toBe(a.body.id);
+    const lista = await request(app.getHttpServer()).get('/v1/rascunhos?chatId=58').set(H).expect(200);
+    expect(lista.body.rascunhos).toHaveLength(1);
+    expect(lista.body.rascunhos[0].origem).toBe('automacao');
+  });
+
+  it('recusa token errado e leitura que não é JSON', async () => {
+    const caminho = await prepararCadastro();
+    await request(app.getHttpServer()).post('/v1/kentro/leitura/token-errado').send({ chatId: '59', leitura: {} }).expect(401);
+    const r = await request(app.getHttpServer()).post(caminho).send({ chatId: '59', leitura: 'não consegui ler a imagem' }).expect(200);
+    expect(r.body.status).toBe('erro');
   });
 });

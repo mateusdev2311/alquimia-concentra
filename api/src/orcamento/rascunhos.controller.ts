@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
-import { IsBoolean, IsIn, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsBoolean, IsIn, IsObject, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 import { ChaveGuard, RequisicaoAutenticada } from '../acesso/chave.guard';
 import { ErroApi } from '../comum/erros';
 import { PrismaService } from '../comum/prisma.service';
@@ -33,16 +34,10 @@ class InicioDto {
 }
 
 class ArquivoDto {
-  @IsOptional()
+  /** fileRef da mensagem na Kentro (é o file_id que o aiProcessFile lê). */
   @IsString()
-  @MaxLength(4000)
-  url?: string;
-
-  /** Até ~5 MB de arquivo (o proxy da Kentro limita o corpo). */
-  @IsOptional()
-  @IsString()
-  @MaxLength(8_000_000)
-  base64?: string;
+  @MaxLength(100)
+  referencia!: string;
 
   @IsOptional()
   @IsString()
@@ -53,16 +48,19 @@ class ArquivoDto {
   @IsString()
   @MaxLength(200)
   nome?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  referencia?: string;
 }
 
-class LerReceitaDto extends InicioDto {
+class AguardarLeituraDto extends InicioDto {
   @IsObject()
+  @ValidateNested()
+  @Type(() => ArquivoDto)
   arquivo!: ArquivoDto;
+}
+
+class FalhaLeituraDto {
+  @IsString()
+  @MaxLength(300)
+  motivo!: string;
 }
 
 class AtualizarDto {
@@ -114,10 +112,17 @@ export class RascunhosController {
     return vistaDoRascunho(await this.rascunhos.criarManual(req.usuario, dto));
   }
 
-  @Post('ler-receita')
-  async lerReceita(@Body() dto: LerReceitaDto, @Req() req: RequisicaoAutenticada) {
+  /** O cartão cria o rascunho "lendo" e, se `novo`, dispara a automação de leitura da Kentro com o id dele. */
+  @Post('aguardar-leitura')
+  async aguardarLeitura(@Body() dto: AguardarLeituraDto, @Req() req: RequisicaoAutenticada) {
     const { arquivo, ...inicio } = dto;
-    return vistaDoRascunho(await this.rascunhos.iniciarLeitura(req.usuario, inicio, arquivo, 'ia'));
+    const { rascunho, novo } = await this.rascunhos.aguardarLeitura(req.usuario, inicio, arquivo);
+    return { ...vistaDoRascunho(rascunho), novo };
+  }
+
+  @Post(':id/falha-leitura')
+  async falhaLeitura(@Param('id', ParseUUIDPipe) id: string, @Body() dto: FalhaLeituraDto) {
+    return vistaDoRascunho(await this.rascunhos.falhouLeitura(id, dto.motivo));
   }
 
   @Get(':id')

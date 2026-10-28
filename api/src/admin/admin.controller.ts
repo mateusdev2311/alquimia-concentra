@@ -1,13 +1,16 @@
-import { Body, Controller, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsArray, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { AcessoService } from '../acesso/acesso.service';
 import { AuditoriaService } from '../acesso/auditoria.service';
 import { ChaveGuard, RequisicaoAutenticada, SoAdmin } from '../acesso/chave.guard';
 import { Recurso, RECURSOS, SincronizacaoService } from '../catalogo/sincronizacao.service';
 import { ErroApi } from '../comum/erros';
 import { PrismaService } from '../comum/prisma.service';
+import { ConfigApp, CONFIG_APP } from '../comum/config';
 import { ConcentraClient } from '../concentra/concentra.client';
+import { instrucaoKentro } from '../ia/leitura';
 import { StatusService } from '../consultas/status.service';
 import { ConfiguracoesService, TipoFormula } from '../orcamento/configuracoes.service';
 import { MODELO_PADRAO, VARIAVEIS } from '../orcamento/mensagem';
@@ -83,7 +86,49 @@ export class AdminController {
     private readonly sincronizacao: SincronizacaoService,
     private readonly concentra: ConcentraClient,
     private readonly auditoria: AuditoriaService,
+    private readonly acesso: AcessoService,
+    @Inject(CONFIG_APP) private readonly configApp: ConfigApp,
   ) {}
+
+  /** Nova chave de atendimento (mostrada uma vez): a anterior para de funcionar na hora. */
+  @Post('chaves/atendimento')
+  async trocarChaveAtendimento(@Req() req: RequisicaoAutenticada) {
+    const chave = await this.acesso.trocarChaveAtendimento();
+    this.auditoria.registrar(req.usuario, 'admin.chave_atendimento');
+    return { chaveAtendimento: chave };
+  }
+
+  /**
+   * O que a automação "Ler receita" da Kentro precisa: a URL (com o token), a instrução do aiProcessFile
+   * e o corpo da requisição, para copiar e colar.
+   */
+  @Get('leitura')
+  async leitura() {
+    const token = await this.acesso.tokenAutomacao();
+    return {
+      url: token ? `${this.configApp.urlPublica}/v1/kentro/leitura/${token}` : null,
+      instrucao: instrucaoKentro(),
+      corpo: {
+        chatId: '{{chat_id}}',
+        rascunhoId: '{{rascunho_id}}',
+        leitura: '{{receita_lida}}',
+        arquivoId: '{{arquivo_id}}',
+        arquivoNome: '{{arquivo_nome}}',
+        mimetype: '{{arquivo_tipo}}',
+        telefone: '{{chat_client_number}}',
+        nomeContato: '{{chat_client_name}}',
+        contatoId: '{{chat_contact_id}}',
+        clienteId: '{{cliente_id}}',
+      },
+    };
+  }
+
+  @Post('leitura/token')
+  async trocarTokenLeitura(@Req() req: RequisicaoAutenticada) {
+    await this.acesso.trocarTokenAutomacao();
+    this.auditoria.registrar(req.usuario, 'admin.token_automacao');
+    return this.leitura();
+  }
 
   @Get('config')
   async config() {

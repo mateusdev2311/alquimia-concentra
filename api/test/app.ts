@@ -7,8 +7,6 @@ import { AppModule, OpcoesApp } from '../src/app.module';
 import { ConfigApp } from '../src/comum/config';
 import { configurarApp } from '../src/comum/configurar-app';
 
-export const CHAVE_ATENDIMENTO = 'atendimento-de-teste-0123456789abcdef';
-export const CHAVE_ADMIN = 'admin-de-teste-0123456789abcdef-xyz';
 export const URL_CONCENTRA = 'http://concentra.teste/apiconc';
 
 export function configDeTeste(sobrescrever: Partial<ConfigApp> = {}): ConfigApp {
@@ -18,10 +16,7 @@ export function configDeTeste(sobrescrever: Partial<ConfigApp> = {}): ConfigApp 
     urlPublica: 'https://concentra.kentro.teste',
     dirExtensao: path.join(__dirname, '..', '..', 'extension'),
     concentra: { url: URL_CONCENTRA, chave: 'chave-concentra-teste', tempoLimite: 2000 },
-    chaveAtendimento: CHAVE_ATENDIMENTO,
-    chaveAdmin: CHAVE_ADMIN,
-    openai: { chave: 'sk-teste', modelo: 'modelo-teste' },
-    tokenWebhookKentro: 'token-webhook-teste',
+    redefinirChaves: false,
     sincronizacaoAutomatica: false,
     ...sobrescrever,
   };
@@ -57,14 +52,10 @@ export interface ChamadaFalsa {
 }
 
 /**
- * fetch falso: `concentra` responde as chamadas à apiconc pela `funcao`; `openai` responde a leitura.
+ * fetch falso: `concentra` responde as chamadas à apiconc pela `funcao`.
  * Uma resposta `'cair'` simula a farmácia sem internet (o fetch rejeita).
  */
-export function fetchFalso(rotas: {
-  concentra?: (funcao: string, corpo: Record<string, unknown>) => unknown;
-  openai?: (corpo: Record<string, unknown>) => unknown;
-  arquivo?: () => { status: number; corpo: Buffer; tipo?: string };
-}) {
+export function fetchFalso(rotas: { concentra?: (funcao: string, corpo: Record<string, unknown>) => unknown }) {
   const chamadas: ChamadaFalsa[] = [];
   const fn = (async (entrada: string | URL | Request, init?: RequestInit) => {
     const url = String(entrada);
@@ -75,11 +66,6 @@ export function fetchFalso(rotas: {
       if (r === 'cair') throw Object.assign(new Error('fetch failed'), { name: 'TypeError' });
       return new Response(JSON.stringify(r ?? [{ erro: 'Nenhum registro encontrado' }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
-    if (url.startsWith('https://api.openai.com/')) {
-      return new Response(JSON.stringify(rotas.openai?.(corpo) ?? {}), { status: 200 });
-    }
-    const a = rotas.arquivo?.();
-    if (a) return new Response(new Uint8Array(a.corpo), { status: a.status, headers: { 'Content-Type': a.tipo ?? 'image/jpeg' } });
     return new Response('', { status: 404 });
   }) as typeof fetch;
   return { fetch: fn, chamadas };

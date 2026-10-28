@@ -37,20 +37,6 @@ function ehReceita(m: MensagemOmni): boolean {
   return m.fileRef != null && !m.deleted && (tipo.startsWith('image/') || tipo === 'application/pdf');
 }
 
-/** Arquivo do chat em base64 (quando o servidor não consegue baixar a URL temporária da Kentro). */
-async function baixarComoBase64(url: string): Promise<string> {
-  const resposta = await fetch(url);
-  if (!resposta.ok) throw new Error(`HTTP ${resposta.status}`);
-  const blob = await resposta.blob();
-  if (blob.size > 4.5 * 1024 * 1024) throw new Error('grande');
-  return new Promise((resolver, rejeitar) => {
-    const leitor = new FileReader();
-    leitor.onload = () => resolver(String(leitor.result).replace(/^data:[^,]*,/, ''));
-    leitor.onerror = () => rejeitar(leitor.error);
-    leitor.readAsDataURL(blob);
-  });
-}
-
 /** Fotos e PDFs da conversa: o atendente escolhe qual é a receita. */
 function ArquivosDoChat({ ctx, aoLer, aoVoltar }: { ctx: Contexto; aoLer: (r: Rascunho) => void; aoVoltar: () => void }) {
   const { omni, api, chat, cliente } = ctx;
@@ -65,31 +51,43 @@ function ArquivosDoChat({ ctx, aoLer, aoVoltar }: { ctx: Contexto; aoLer: (r: Ra
     );
   }, [omni, chat.id]);
 
+  /**
+   * O rascunho nasce "lendo" na integração; a automação da Kentro lê a imagem com a IA da Kentro
+   * (aiProcessFile, file_id = fileRef) e devolve o JSON para a integração completar o rascunho.
+   */
   const ler = async (m: MensagemOmni) => {
+    if (!ctx.automacaoLeitura) return;
     setLendo(m.id);
     setErro(null);
     try {
-      const arquivo = await omni.chats.getFile(m.fileRef!);
-      const base = {
-        chatId: String(chat.id),
-        contatoId: chat.contactId != null ? String(chat.contactId) : undefined,
-        clienteId: cliente?.id,
-        telefone: chat.contact?.phone ?? undefined,
-        nomeContato: chat.contact?.name ?? undefined,
-      };
-      const info = { mimetype: arquivo.mimetype ?? m.mimetype ?? undefined, nome: arquivo.name ?? m.fileName ?? undefined, referencia: String(m.fileRef) };
-      let r: Rascunho;
-      try {
-        r = await api<Rascunho>('/v1/rascunhos/ler-receita', { method: 'POST', body: { ...base, arquivo: { ...info, url: arquivo.url } } });
-      } catch (e) {
-        if ((e as { codigo?: string }).codigo !== 'ARQUIVO_INACESSIVEL') throw e;
-        // A URL temporária só abre na sessão do navegador: manda o próprio arquivo.
-        const base64 = await baixarComoBase64(arquivo.url);
-        r = await api<Rascunho>('/v1/rascunhos/ler-receita', { method: 'POST', body: { ...base, arquivo: { ...info, base64 } }, timeout: 60000 });
+      const r = await api<Rascunho & { novo: boolean }>('/v1/rascunhos/aguardar-leitura', {
+        method: 'POST',
+        body: {
+          chatId: String(chat.id),
+          contatoId: chat.contactId != null ? String(chat.contactId) : undefined,
+          clienteId: cliente?.id,
+          telefone: chat.contact?.phone ?? undefined,
+          nomeContato: chat.contact?.name ?? undefined,
+          arquivo: { referencia: String(m.fileRef), mimetype: m.mimetype ?? undefined, nome: m.fileName ?? undefined },
+        },
+      });
+      if (r.novo) {
+        try {
+          await omni.runAutomation(ctx.automacaoLeitura, {
+            rascunho_id: r.id,
+            arquivo_id: String(m.fileRef),
+            arquivo_nome: m.fileName ?? '',
+            arquivo_tipo: m.mimetype ?? '',
+            chat_id: String(chat.id),
+            cliente_id: cliente?.id ?? '',
+          });
+        } catch {
+          await api(`/v1/rascunhos/${r.id}/falha-leitura`, { method: 'POST', body: { motivo: 'A automação de leitura da Kentro não rodou. Confira o id da automação na configuração da extensão.' } }).catch(() => {});
+        }
       }
       aoLer(r);
     } catch (e) {
-      setErro((e as Error)?.message === 'grande' ? 'O arquivo passa de 4,5 MB: peça uma foto menor ao cliente.' : mensagemDeErro(e));
+      setErro(mensagemDeErro(e));
     } finally {
       setLendo(null);
     }
@@ -431,7 +429,7 @@ function Editor({ ctx, id, aoVoltar }: { ctx: Contexto; id: string; aoVoltar: ()
   if (!rascunho) return <Carregando />;
   if (rascunho.status === 'lendo') {
     return (
-      <Secao icone="ia" titulo="Lendo a receita…" descricao="A IA está lendo e procurando cada item no cadastro. Leva de 10 a 40 segundos.">
+      <Secao icone="ia" titulo="Lendo a receita…" descricao="A IA da Kentro está lendo e a integração procura cada item no cadastro. Leva de 10 a 60 segundos.">
         <Carregando texto="Pode continuar o atendimento: o orçamento fica salvo aqui." />
       </Secao>
     );
@@ -664,11 +662,11 @@ export function AbaOrcamento({ ctx, painel }: { ctx: Contexto; painel: Painel })
 
   return (
     <>
-      {!painel.status.iaLigada && <Aviso>A leitura de receita com IA está desligada. Monte o orçamento manualmente.</Aviso>}
+      {!ctx.automacaoLeitura && <Aviso>A leitura de receita com IA não está configurada nesta extensão. Monte o orçamento manualmente.</Aviso>}
       {!cliente && <Aviso>Sem cliente identificado: o nome do paciente virá da receita. Confira na revisão.</Aviso>}
       {erro && <Aviso tipo="erro">{erro}</Aviso>}
       <div class="kt-grade-2" style={{ marginBottom: '10px' }}>
-        <button type="button" class="kt-botao" disabled={!painel.status.iaLigada} onClick={() => setModo({ tipo: 'arquivos' })}>
+        <button type="button" class="kt-botao" disabled={!ctx.automacaoLeitura} onClick={() => setModo({ tipo: 'arquivos' })}>
           <Icone nome="ia" tamanho={14} />
           Receita → Orçamento
         </button>

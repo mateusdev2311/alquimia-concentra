@@ -1,32 +1,27 @@
 import { randomUUID } from 'node:crypto';
-import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
-import { OrigemRascunho, Prisma, Rascunho } from '@prisma/client';
+import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
+import { Prisma, Rascunho } from '@prisma/client';
 import { AuditoriaService } from '../acesso/auditoria.service';
 import { Usuario } from '../acesso/chave.guard';
 import { CatalogoService } from '../catalogo/catalogo.service';
 import { ErroApi } from '../comum/erros';
-import { Fetch, FETCH } from '../comum/fetch';
 import { PrismaService } from '../comum/prisma.service';
-import { digitos, normalizar } from '../comum/texto';
+import { chaveTelefone, digitos, normalizar } from '../comum/texto';
 import { ConcentraClient, FalhaConcentra, comoLista } from '../concentra/concentra.client';
 import { numeroConselho, valorMonetario } from '../concentra/formatos';
 import { OrcamentosService } from '../consultas/orcamentos.service';
 import { Casamento } from '../ia/casamento';
-import { Arquivo, ReceitaLida } from '../ia/leitura';
-import { OpenAiClient } from '../ia/openai.client';
+import { interpretarLeitura, ReceitaLida } from '../ia/leitura';
 import { ConfiguracoesService } from './configuracoes.service';
 import { renderizar, valoresDaMensagem } from './mensagem';
 import { contarCorrigidos, corpoGerarOrcamento, DadosOrcamento, ResultadoEnvio, validar } from './modelo';
 
-export interface ArquivoEntrada {
-  /** URL temporária do arquivo (omni.chats.getFile ou variável da automação). */
-  url?: string;
-  /** Ou o próprio arquivo, quando a URL não é acessível pelo servidor. */
-  base64?: string;
-  mimetype?: string;
-  nome?: string;
-  /** Referência do arquivo na Kentro (fileRef), para não ler a mesma receita duas vezes. */
-  referencia?: string;
+/** O arquivo da receita na Kentro. A imagem nunca passa por aqui: quem lê é a IA da Kentro. */
+export interface ArquivoReceita {
+  /** Id do arquivo na Kentro (fileRef da mensagem / file_id da automação): evita ler a mesma receita duas vezes. */
+  referencia?: string | null;
+  nome?: string | null;
+  mimetype?: string | null;
 }
 
 export interface Inicio {
@@ -38,8 +33,8 @@ export interface Inicio {
   nomeContato?: string | null;
 }
 
-const TIPOS_ACEITOS = /^(image\/(jpeg|png|webp|gif|heic|heif)|application\/pdf)$/;
-const TAMANHO_MAXIMO = 20 * 1024 * 1024;
+/** A automação da Kentro tem este tempo para devolver a leitura; depois o rascunho vira erro. */
+const PRAZO_LEITURA = 3 * 60_000;
 
 /** Rascunho como a extensão recebe. */
 export function vistaDoRascunho(r: Rascunho) {
@@ -59,7 +54,6 @@ export function vistaDoRascunho(r: Rascunho) {
 
 @Injectable()
 export class RascunhosService implements OnApplicationBootstrap {
-  private readonly logger = new Logger('Rascunhos');
   private readonly casamento: Casamento;
   /** Envios em andamento neste processo: dois cliques não geram dois orçamentos. */
   private readonly enviando = new Set<string>();
@@ -69,9 +63,7 @@ export class RascunhosService implements OnApplicationBootstrap {
     private readonly concentra: ConcentraClient,
     private readonly orcamentos: OrcamentosService,
     private readonly configuracoes: ConfiguracoesService,
-    private readonly openai: OpenAiClient,
     private readonly auditoria: AuditoriaService,
-    @Inject(FETCH) private readonly fetch: Fetch,
     catalogo: CatalogoService,
   ) {
     this.casamento = new Casamento(catalogo, configuracoes);
@@ -88,6 +80,13 @@ export class RascunhosService implements OnApplicationBootstrap {
   async obter(id: string): Promise<Rascunho> {
     const r = await this.prisma.rascunho.findUnique({ where: { id } }).catch(() => null);
     if (!r) throw new ErroApi(404, 'RASCUNHO_NAO_ENCONTRADO', 'Orçamento em montagem não encontrado (rascunhos somem depois de 30 dias).');
+    // A automação não devolveu a leitura a tempo (falhou ou a IA não respondeu).
+    if (r.status === 'lendo' && Date.now() - r.criadoEm.getTime() > PRAZO_LEITURA) {
+      return this.prisma.rascunho.update({
+        where: { id },
+        data: { status: 'erro', erro: 'A leitura da receita não voltou. Tente de novo ou monte o orçamento manualmente.' },
+      });
+    }
     return r;
   }
 
@@ -121,78 +120,100 @@ export class RascunhosService implements OnApplicationBootstrap {
     return r;
   }
 
-  /** Cria o rascunho em "lendo" e lê em segundo plano: a extensão acompanha pelo status. */
-  async iniciarLeitura(usuario: Usuario, inicio: Inicio, arquivo: ArquivoEntrada, origem: OrigemRascunho): Promise<Rascunho> {
-    if (!this.openai.ligada) throw new ErroApi(503, 'IA_DESLIGADA', 'A leitura de receita está desligada (falta OPENAI_API_KEY no Doca).');
-    if (!arquivo.url && !arquivo.base64) throw new ErroApi(400, 'SEM_ARQUIVO', 'Envie a foto ou o PDF da receita.');
-    if (arquivo.referencia) {
-      const ja = await this.prisma.rascunho.findFirst({
-        where: { chatId: inicio.chatId, status: { in: ['lendo', 'pronto'] }, arquivo: { path: ['referencia'], equals: arquivo.referencia } },
-      });
-      if (ja) return ja;
-    }
-    // Baixa antes de criar: se a URL não abre no servidor, a extensão manda o próprio arquivo (ARQUIVO_INACESSIVEL).
-    const baixado = await this.baixar(arquivo);
+  /** Rascunho já lendo (ou pronto) para o mesmo arquivo neste atendimento: não lê de novo. */
+  private async jaLido(chatId: string, referencia?: string | null): Promise<Rascunho | null> {
+    if (!referencia) return null;
+    return this.prisma.rascunho.findFirst({
+      where: { chatId, status: { in: ['lendo', 'pronto'] }, arquivo: { path: ['referencia'], equals: referencia } },
+      orderBy: { criadoEm: 'desc' },
+    });
+  }
+
+  /**
+   * O atendente escolheu a receita no cartão: o rascunho nasce "lendo" e a extensão dispara a automação
+   * da Kentro (omni.runAutomation), que lê com a IA da Kentro e devolve em receberLeitura.
+   */
+  async aguardarLeitura(usuario: Usuario, inicio: Inicio, arquivo: ArquivoReceita): Promise<{ rascunho: Rascunho; novo: boolean }> {
+    const ja = await this.jaLido(inicio.chatId, arquivo.referencia);
+    if (ja) return { rascunho: ja, novo: false };
     const r = await this.prisma.rascunho.create({
       data: {
         chatId: inicio.chatId,
         contatoId: inicio.contatoId ?? null,
         usuarioId: usuario.id,
         usuarioNome: usuario.nome,
-        origem,
+        origem: 'ia',
         status: 'lendo',
         arquivo: { nome: arquivo.nome ?? null, mimetype: arquivo.mimetype ?? null, referencia: arquivo.referencia ?? null },
         dados: (await this.base(inicio)) as unknown as Prisma.InputJsonValue,
       },
     });
-    this.auditoria.registrar(usuario, 'receita.ler', r.id, { origem, chatId: inicio.chatId });
-    void this.processar(r.id, baixado);
-    return r;
+    this.auditoria.registrar(usuario, 'receita.ler', r.id, { origem: 'ia', chatId: inicio.chatId });
+    return { rascunho: r, novo: true };
   }
 
-  private async baixar(entrada: ArquivoEntrada): Promise<Arquivo> {
-    if (entrada.base64) {
-      const base64 = entrada.base64.replace(/^data:[^,]*,/, '');
-      const mimetype = (entrada.mimetype ?? 'image/jpeg').toLowerCase();
-      if (!TIPOS_ACEITOS.test(mimetype)) throw new ErroApi(415, 'TIPO_NAO_ACEITO', 'Envie a receita como foto (JPG/PNG) ou PDF.');
-      return { base64, mimetype, nome: entrada.nome ?? 'receita' };
-    }
-    let resposta: Response;
-    try {
-      resposta = await this.fetch(entrada.url!, { signal: AbortSignal.timeout(30_000) });
-    } catch {
-      throw new ErroApi(422, 'ARQUIVO_INACESSIVEL', 'Não consegui baixar o arquivo da receita.');
-    }
-    if (!resposta.ok) throw new ErroApi(422, 'ARQUIVO_INACESSIVEL', `Não consegui baixar o arquivo da receita (HTTP ${resposta.status}).`);
-    const corpo = Buffer.from(await resposta.arrayBuffer());
-    if (corpo.length > TAMANHO_MAXIMO) throw new ErroApi(413, 'ARQUIVO_GRANDE', 'O arquivo da receita passa de 20 MB.');
-    const doCabecalho = resposta.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase();
-    const mimetype = (entrada.mimetype || doCabecalho || 'image/jpeg').toLowerCase();
-    if (!TIPOS_ACEITOS.test(mimetype)) throw new ErroApi(415, 'TIPO_NAO_ACEITO', 'Envie a receita como foto (JPG/PNG) ou PDF.');
-    return { base64: corpo.toString('base64'), mimetype, nome: entrada.nome ?? 'receita' };
+  /** A extensão não conseguiu disparar a automação: o rascunho não fica "lendo" para sempre. */
+  async falhouLeitura(id: string, motivo: string): Promise<Rascunho> {
+    const r = await this.obter(id);
+    if (r.status !== 'lendo') return r;
+    return this.prisma.rascunho.update({ where: { id }, data: { status: 'erro', erro: motivo.slice(0, 300) } });
   }
 
-  private async processar(id: string, arquivo: Arquivo): Promise<void> {
-    const inicio = Date.now();
-    try {
-      const lida = await this.openai.lerReceita(arquivo);
-      const r = await this.obter(id);
-      const dados = await this.montar(r.dados as unknown as DadosOrcamento, lida);
-      await this.prisma.rascunho.update({
-        where: { id },
-        data: {
-          status: 'pronto',
-          leitura: lida as unknown as Prisma.InputJsonValue,
-          dados: dados as unknown as Prisma.InputJsonValue,
-          segundosLeitura: (Date.now() - inicio) / 1000,
-          erro: !lida.eh_receita ? 'A IA achou que este arquivo não é uma receita. Confira.' : !lida.legivel ? 'Receita com partes ilegíveis: confira cada item.' : null,
-        },
+  /**
+   * A leitura chegou da automação da Kentro. Com rascunhoId (disparo pelo cartão), completa aquele rascunho;
+   * sem (pré-montagem, disparada pela mensagem recebida), cria um novo, já pronto para revisar.
+   */
+  async receberLeitura(entrada: { rascunhoId?: string | null; inicio: Inicio; arquivo: ArquivoReceita; leitura: unknown }): Promise<Rascunho> {
+    let r: Rascunho | null;
+    if (entrada.rascunhoId) {
+      r = await this.prisma.rascunho.findUnique({ where: { id: entrada.rascunhoId } }).catch(() => null);
+      if (!r) throw new ErroApi(404, 'RASCUNHO_NAO_ENCONTRADO', 'Rascunho da leitura não encontrado.');
+      if (r.status !== 'lendo' && r.status !== 'erro') return r;
+    } else {
+      r = await this.jaLido(entrada.inicio.chatId, entrada.arquivo.referencia);
+      if (r && r.status === 'pronto') return r;
+      if (!r) {
+        const clienteId = entrada.inicio.clienteId ?? (await this.clientePorTelefone(entrada.inicio.telefone));
+        r = await this.prisma.rascunho.create({
+          data: {
+            chatId: entrada.inicio.chatId,
+            contatoId: entrada.inicio.contatoId ?? null,
+            usuarioNome: 'Automação Kentro',
+            origem: 'automacao',
+            status: 'lendo',
+            arquivo: { nome: entrada.arquivo.nome ?? null, mimetype: entrada.arquivo.mimetype ?? null, referencia: entrada.arquivo.referencia ?? null },
+            dados: (await this.base({ ...entrada.inicio, clienteId })) as unknown as Prisma.InputJsonValue,
+          },
+        });
+      }
+    }
+
+    const lida = interpretarLeitura(entrada.leitura);
+    const segundos = (Date.now() - r.criadoEm.getTime()) / 1000;
+    if (!lida) {
+      return this.prisma.rascunho.update({
+        where: { id: r.id },
+        data: { status: 'erro', erro: 'A IA não devolveu uma leitura válida. Tente de novo ou monte manualmente.', segundosLeitura: segundos },
       });
-    } catch (erro) {
-      const mensagem = erro instanceof ErroApi ? erro.mensagem : 'Não foi possível ler a receita. Tente de novo.';
-      if (!(erro instanceof ErroApi)) this.logger.error(erro instanceof Error ? erro.stack ?? erro.message : String(erro));
-      await this.prisma.rascunho.update({ where: { id }, data: { status: 'erro', erro: mensagem, segundosLeitura: (Date.now() - inicio) / 1000 } }).catch(() => {});
     }
+    const dados = await this.montar(r.dados as unknown as DadosOrcamento, lida);
+    return this.prisma.rascunho.update({
+      where: { id: r.id },
+      data: {
+        status: 'pronto',
+        leitura: lida as unknown as Prisma.InputJsonValue,
+        dados: dados as unknown as Prisma.InputJsonValue,
+        segundosLeitura: segundos,
+        erro: !lida.eh_receita ? 'A IA achou que este arquivo não é uma receita. Confira.' : !lida.legivel ? 'Receita com partes ilegíveis: confira cada item.' : null,
+      },
+    });
+  }
+
+  private async clientePorTelefone(telefone?: string | null): Promise<string | null> {
+    const chave = chaveTelefone(telefone);
+    if (!chave) return null;
+    const c = await this.prisma.cliente.findFirst({ where: { chavesTelefone: { has: chave } }, orderBy: { ultimaCompra: { sort: 'desc', nulls: 'last' } } });
+    return c?.id ?? null;
   }
 
   private async montar(base: DadosOrcamento, lida: ReceitaLida): Promise<DadosOrcamento> {

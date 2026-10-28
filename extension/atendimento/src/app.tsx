@@ -14,6 +14,8 @@ export interface Contexto {
   chat: ChatOmni;
   /** Id do campo extra "ID Concentra" do contato (config da instalação). */
   campoCliente: number | null;
+  /** Id da automação da Kentro que lê a receita (config da instalação). null = só orçamento manual. */
+  automacaoLeitura: number | null;
   /** Cliente da Concentra deste atendimento (identificado pelo telefone, vinculado ou escolhido). */
   cliente: Cliente | null;
   escolherCliente: (c: Cliente | null) => void;
@@ -45,6 +47,7 @@ async function clienteVinculado(omni: Omni, chat: ChatOmni, campo: number | null
 export function App({ omni, ctx }: { omni: Omni; ctx: CtxOmni }) {
   const { apiUrl, chave } = lerConfigInstalacao(ctx, 'chave_atendimento');
   const campoCliente = Number(ctx.config?.campo_cliente) || null;
+  const automacaoLeitura = Number(ctx.config?.automacao_leitura) || null;
   const api = useMemo(() => (apiUrl && chave ? criarApi({ omni, apiUrl, chave, ctx }) : null), [omni, apiUrl, chave, ctx]);
 
   const [selecionado, setSelecionado] = useState<ChatOmni | null | undefined>(undefined);
@@ -124,7 +127,7 @@ export function App({ omni, ctx }: { omni: Omni; ctx: CtxOmni }) {
     );
   }
 
-  const contexto: Contexto = { omni, api, chat: selecionado, campoCliente, cliente, escolherCliente: setCliente, recarregar };
+  const contexto: Contexto = { omni, api, chat: selecionado, campoCliente, automacaoLeitura, cliente, escolherCliente: setCliente, recarregar };
   const status = painel?.status;
   const abertos = painel?.rascunhos.filter((r) => r.status !== 'erro').length ?? 0;
 

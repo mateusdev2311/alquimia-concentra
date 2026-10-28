@@ -62,6 +62,8 @@ export interface RespostaHttp {
 
 export interface Omni {
   ready(cb: (ctx: CtxOmni) => void): unknown;
+  /** Executa uma automação no servidor da Kentro (contexto administrativo), com variáveis soltas e/ou um payload. */
+  runAutomation(idOuSlug: number | string, vars?: Record<string, string>, payload?: unknown): Promise<unknown>;
   on(evento: string, cb: (payload: never) => void): unknown;
   http: {
     request(opts: { url: string; method?: string; headers?: Record<string, string>; body?: string; timeout?: number }): Promise<RespostaHttp>;

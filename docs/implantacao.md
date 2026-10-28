@@ -7,9 +7,12 @@ Kentro (navegador do atendente)                 Doca (este serviço, HTTPS)     
 ┌──────────────────────────────┐  omni.http   ┌──────────────────────────────┐  HTTP    ┌─────────────────────┐
 │ Cartão "Concentra" (chatPanel)│────────────▶│ NestJS + Postgres            │────────▶│ apiconc :3000        │
 │ Admin (menu do topo, admins)  │  chave      │ · cópia do cadastro (busca)  │ x-api-  │ (DuckDNS → servidor  │
-└──────────────────────────────┘             │ · rascunhos, auditoria       │  key    │  192.168.1.250)      │
-Automação "receita recebida" ───── webhook ──▶│ · leitura de receita (OpenAI)│         └─────────────────────┘
-                                               └──────────────────────────────┘
+└──────────────┬───────────────┘             │ · rascunhos, auditoria       │  key    │  192.168.1.250)      │
+   runAutomation│                             │ · casa a leitura c/ cadastro │         └─────────────────────┘
+┌──────────────▼───────────────┐   POST JSON │                              │
+│ Automação "Ler receita"       │────────────▶│ /v1/kentro/leitura/{token}   │
+│ aiProcessFile (IA da Kentro)  │             └──────────────────────────────┘
+└──────────────────────────────┘
 ```
 
 - O navegador nunca fala com a Concentra: a chave da API fica só no Doca.
@@ -29,14 +32,11 @@ Automação "receita recebida" ───── webhook ──▶│ · leitura d
 | Banco | ligar o projeto ao Postgres `mateus_alquimia_concentra` (está criado, mas **não ligado**) |
 | Subdomínio | com HTTPS, ex.: `https://concentra.kentro.com.br` (é o `URL_PUBLICA`) |
 
-Variáveis: veja [.env.example](../.env.example). As obrigatórias são:
-- `DATABASE_URL`, `URL_PUBLICA`;
-- `CONCENTRA_API_URL`, `CONCENTRA_API_KEY`;
-- `CHAVE_ATENDIMENTO`, `CHAVE_ADMIN`.
+Variáveis: só quatro, veja [.env.example](../.env.example).
+- `DATABASE_URL` e `URL_PUBLICA`;
+- `CONCENTRA_API_URL` e `CONCENTRA_API_KEY`.
 
-As que ligam recursos são:
-- `OPENAI_API_KEY`, que liga a leitura de receita;
-- `TOKEN_WEBHOOK_KENTRO`, que liga a pré-montagem.
+As chaves das extensões não vão no Doca: são geradas na ativação (passo 2). A IA também não: quem lê a receita é a IA da Kentro (passo 3).
 
 Na primeira subida o serviço aplica as migrações e, em cerca de 20 segundos, copia o cadastro: produtos (11 mil), prescritores (11,5 mil) e clientes com compra nos últimos 2 anos (13 mil). Depois:
 - a cada 30 minutos pega as alterações;
@@ -45,34 +45,35 @@ Na primeira subida o serviço aplica as migrações e, em cerca de 20 segundos, 
 
 > Troque a senha do banco quando entrar em produção: ela apareceu num print durante o projeto.
 
-## 2. Instalar as extensões na Kentro da Alquimia
+## 2. Instalar as extensões e ativar
 
-Em **Configurações › Extensões instaladas › Instalar por URL**:
+1. Em **Configurações › Extensões instaladas › Instalar por URL**, instale o **Admin**: `{URL_PUBLICA}/extensao/admin/manifest.json`. Deixe a chave de admin **vazia**.
+2. Abra **Concentra** no menu do topo (só administradores veem) › **Ativar e gerar as chaves**. Aparecem a chave de admin e a chave de atendimento, **uma vez só**.
+3. Cole a **chave de admin** na instalação do Admin.
+4. Instale o **cartão do atendente**: `{URL_PUBLICA}/extensao/atendimento/manifest.json`, com:
+   - a chave de atendimento da ativação;
+   - `campo_cliente` = **1**, que já vem preenchido (é o campo extra "ID Concentra", já criado);
+   - `automacao_leitura` = id da automação do passo 3.
+5. Para testar antes de liberar, faça o cartão chegar só ao seu usuário. Depois abra para todos os atendentes.
 
-| Extensão | URL do manifest | Config |
-|---|---|---|
-| Alquimia × Concentra (cartão do atendente) | `{URL_PUBLICA}/extensao/atendimento/manifest.json` | `chave_atendimento` = CHAVE_ATENDIMENTO · `campo_cliente` = **1** (campo extra "ID Concentra", já criado) |
-| Alquimia × Concentra — Admin | `{URL_PUBLICA}/extensao/admin/manifest.json` | `chave_admin` = CHAVE_ADMIN (só administradores veem) |
+Se a chave de admin se perder: `REDEFINIR_CHAVES=sim` no Doca, reinicie, ative de novo e tire a variável.
 
-Para testar antes de liberar: instale o cartão do atendente com quem recebe = só o seu usuário. Depois abra para todos os atendentes.
+## 3. Automação "Ler receita" (a IA da Kentro lê, a integração casa com o cadastro)
 
-## 3. Pré-montagem (receita lida antes de o atendente abrir o cartão)
+Uma automação só serve aos dois caminhos: o botão "Receita → Orçamento" do cartão e a pré-montagem quando a receita chega. Os valores para copiar (URL com o token, instrução e corpo) ficam no Admin › **Conexão e cadastro › Leitura de receita**.
 
-Crie uma **Automação** na Kentro (depois do deploy, porque ela precisa da URL):
-- disparo: mensagem recebida de **imagem** e de **PDF**, nas filas escolhidas;
-- elemento **Requisição**: `POST {URL_PUBLICA}/v1/kentro/receita/{TOKEN_WEBHOOK_KENTRO}`, com o corpo:
+Uma automação faz o seguinte, nesta ordem:
+1. **Processar arquivo por IA** (`aiProcessFile`), com:
+   - modelo GPT-5.5;
+   - arquivo `{{arquivo_id}}` (pelo cartão) ou `{{message_file.file_id}}` (pela mensagem recebida);
+   - a instrução copiada do Admin;
+   - resultado na variável `receita_lida`.
+2. **Requisição** `POST` para a URL do Admin, com o corpo do Admin.
 
-| Campo | Valor |
-|---|---|
-| `chatId` | `{{chat_id}}` |
-| `arquivoUrl` | `{{message_file.file_url}}` |
-| `mimetype` | `{{message_file.file_mimetype}}` |
-| `nome` | `{{message_file.file_name}}` |
-| `telefone` | `{{chat_client_number}}` |
-| `nomeContato` | `{{chat_client_name}}` |
-| `contatoId` | `{{chat_contact_id}}` |
+- **Pelo cartão:** a extensão chama a automação com as variáveis `rascunho_id`, `arquivo_id`, `arquivo_nome`, `arquivo_tipo`, `chat_id` e `cliente_id`.
+- **Pré-montagem:** uma cópia da automação com disparo em mensagem de imagem e de PDF, nas filas de receita. Nela, `arquivo_id` vira `{{message_file.file_id}}` e `rascunho_id` fica vazio.
 
-A IA também lê fotos que não são receita (ela marca "não é receita"). Para economizar, deixe a automação só nas filas de receita.
+A integração também lê fotos que não são receita, que voltam marcadas como "não é receita". Para economizar, deixe a pré-montagem só nas filas de receita.
 
 ## 4. Assistente de atendimento inicial
 
@@ -88,5 +89,5 @@ Já criada na Kentro: **"Alquimia — Atendimento inicial"** (id 1). Ela usa GPT
 ## Desenvolvimento
 
 - `npm run db:local`: Postgres embutido (porta 54349).
-- `npm test`: 25 testes, incluindo o envio ao ERP com uma Concentra falsa (não repete, não duplica, "envio incerto").
+- `npm test`: 30 testes, incluindo a ativação, a leitura vinda da automação e o envio ao ERP com uma Concentra falsa (não repete, não duplica, "envio incerto").
 - `npm run build`: compila a API e as extensões em `dist/`.

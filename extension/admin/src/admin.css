@@ -240,3 +240,5 @@ th[aria-sort] .kt-ordenar { color: var(--ext-color-primary); }
 .kt-entrada-tabela { font: inherit; font-size: .92em; padding: 6px 8px; border: 1px solid var(--kt-linha-forte); border-radius: 8px; background: var(--ext-color-bg); color: var(--ext-color-text); width: 100%; min-width: 120px; }
 .kt-entrada-tabela:focus { outline: none; border-color: var(--ext-color-primary); box-shadow: var(--kt-foco); }
 .kt-codigo { min-width: 90px; max-width: 110px; font-family: ui-monospace, Consolas, monospace; }
+.kt-previa-instrucao { white-space: pre-wrap; font-size: .8em; max-height: 320px; overflow: auto; margin: 8px 0 0; padding: 10px; border-radius: 8px; background: var(--kt-superficie); }
+pre.kt-chave-valor { white-space: pre-wrap; margin: 0; }

@@ -1,4 +1,5 @@
 import { IndiceCatalogo, ItemCatalogo, tokens } from '../src/catalogo/busca';
+import { interpretarLeitura } from '../src/ia/leitura';
 import { chaveTelefone, normalizar } from '../src/comum/texto';
 import { mensagemDeErro } from '../src/concentra/concentra.client';
 import { cliente, formulaF9, itemOrcamento, orcamento, produtoCadastro, produtoDeDescricao, valorMonetario } from '../src/concentra/formatos';
@@ -216,5 +217,21 @@ describe('orçamento', () => {
 
   it('normaliza nomes como a Concentra', () => {
     expect(normalizar('  Ácido   hialurônico ')).toBe('ACIDO HIALURONICO');
+  });
+});
+
+describe('leitura vinda da automação da Kentro', () => {
+  it('aceita objeto, texto JSON e texto com ```json, e normaliza números em texto', () => {
+    const base = { eh_receita: true, itens: [{ tipo_item: 'manipulado', quantidade_total: '1.000,5', componentes: [{ nome: 'Biotina', dosagem: '0.5', confianca: '0.9' }] }] };
+    for (const entrada of [base, JSON.stringify(base), '```json\n' + JSON.stringify(base) + '\n```']) {
+      const r = interpretarLeitura(entrada);
+      expect(r?.itens[0].quantidade_total).toBe(1000.5);
+      expect(r?.itens[0].componentes[0]).toMatchObject({ nome: 'Biotina', dosagem: 0.5, confianca: 0.9, texto_original: 'Biotina' });
+    }
+  });
+
+  it('devolve null quando não é JSON', () => {
+    expect(interpretarLeitura('desculpe, não consegui ler')).toBeNull();
+    expect(interpretarLeitura(null)).toBeNull();
   });
 });

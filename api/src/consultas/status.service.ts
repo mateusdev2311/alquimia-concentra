@@ -1,7 +1,6 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Cliente } from '@prisma/client';
 import { CatalogoService } from '../catalogo/catalogo.service';
-import { ConfigApp, CONFIG_APP } from '../comum/config';
 import { PrismaService } from '../comum/prisma.service';
 import { ConcentraClient } from '../concentra/concentra.client';
 
@@ -34,7 +33,6 @@ export function clienteDoIndice(c: Cliente): ClienteIndice {
 @Injectable()
 export class StatusService {
   constructor(
-    @Inject(CONFIG_APP) private readonly config: ConfigApp,
     private readonly concentra: ConcentraClient,
     private readonly catalogo: CatalogoService,
     private readonly prisma: PrismaService,
@@ -46,7 +44,6 @@ export class StatusService {
     return {
       concentraOnline: e.online,
       concentraVerificadaEm: (e.online ? e.ultimoSucesso : e.ultimaFalha)?.toISOString() ?? null,
-      iaLigada: this.config.openai != null,
       catalogoCarregado: this.catalogo.carregado,
     };
   }
@@ -73,8 +70,6 @@ export class StatusService {
         ultimoErro: s.ultimoErro,
         emExecucao: s.emExecucaoAte != null && s.emExecucaoAte > new Date(),
       })),
-      modeloIa: this.config.openai?.modelo ?? null,
-      webhookKentroLigado: this.config.tokenWebhookKentro != null,
     };
   }
 }

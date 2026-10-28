@@ -1,39 +1,47 @@
-import { Body, Controller, HttpCode, Inject, Param, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Param, Post } from '@nestjs/common';
 import { Transform } from 'class-transformer';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
-import { ConfigApp, CONFIG_APP } from '../comum/config';
-import { compararSeguro } from '../comum/cripto';
+import { IsDefined, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { AcessoService } from '../acesso/acesso.service';
 import { ErroApi } from '../comum/erros';
-import { PrismaService } from '../comum/prisma.service';
-import { chaveTelefone } from '../comum/texto';
 import { RascunhosService } from './rascunhos.service';
 
 /** A automação monta o corpo com {{variáveis}}: número pode chegar como número, e variável vazia como "". */
 const texto = ({ value }: { value: unknown }) => (value == null || value === '' ? undefined : String(value));
 
-/** O que a automação da Kentro manda quando o cliente envia foto/PDF no atendimento. */
-class ReceitaRecebidaDto {
+/** O que a automação "Ler receita" da Kentro manda depois do aiProcessFile. */
+class LeituraDto {
   @Transform(texto)
   @IsString()
   @MaxLength(40)
   chatId!: string;
 
+  /** Vem do cartão (omni.runAutomation); vazio na pré-montagem disparada pela mensagem recebida. */
   @Transform(texto)
+  @IsOptional()
+  @IsUUID()
+  rascunhoId?: string;
+
+  /** O resultado do aiProcessFile: objeto ou texto JSON. */
+  @IsDefined()
+  leitura!: unknown;
+
+  @Transform(texto)
+  @IsOptional()
   @IsString()
-  @MaxLength(4000)
-  arquivoUrl!: string;
+  @MaxLength(100)
+  arquivoId?: string;
+
+  @Transform(texto)
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  arquivoNome?: string;
 
   @Transform(texto)
   @IsOptional()
   @IsString()
   @MaxLength(100)
   mimetype?: string;
-
-  @Transform(texto)
-  @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  nome?: string;
 
   @Transform(texto)
   @IsOptional()
@@ -52,37 +60,35 @@ class ReceitaRecebidaDto {
   @IsString()
   @MaxLength(40)
   contatoId?: string;
+
+  @Transform(texto)
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  clienteId?: string;
 }
 
 /**
- * Pré-montagem: a automação da Kentro chama esta URL (token no caminho, porque o elemento de
- * requisição é configurado por copiar e colar) e o orçamento fica pronto antes de o atendente abrir o cartão.
+ * A automação da Kentro lê a receita com a IA da própria Kentro (aiProcessFile) e manda o JSON para cá
+ * (token no caminho, porque o elemento de requisição é configurado por copiar e colar).
  */
 @Controller('v1/kentro')
 export class WebhookKentroController {
   constructor(
-    @Inject(CONFIG_APP) private readonly config: ConfigApp,
+    private readonly acesso: AcessoService,
     private readonly rascunhos: RascunhosService,
-    private readonly prisma: PrismaService,
   ) {}
 
-  @Post('receita/:token')
-  @HttpCode(202)
-  async receita(@Param('token') token: string, @Body() dto: ReceitaRecebidaDto) {
-    const esperado = this.config.tokenWebhookKentro;
-    if (!esperado || !compararSeguro(token, esperado)) throw new ErroApi(401, 'TOKEN_INVALIDO', 'Token do webhook inválido.');
-    // Uma leitura por arquivo: a automação pode disparar de novo para a mesma mensagem.
-    const referencia = dto.arquivoUrl.split('?')[0].slice(-100);
-    const chave = chaveTelefone(dto.telefone);
-    const cliente = chave
-      ? await this.prisma.cliente.findFirst({ where: { chavesTelefone: { has: chave } }, orderBy: { ultimaCompra: { sort: 'desc', nulls: 'last' } } })
-      : null;
-    const r = await this.rascunhos.iniciarLeitura(
-      { id: null, nome: 'Automação Kentro' },
-      { chatId: dto.chatId, contatoId: dto.contatoId, telefone: dto.telefone, nomeContato: dto.nomeContato, clienteId: cliente?.id ?? null },
-      { url: dto.arquivoUrl, mimetype: dto.mimetype, nome: dto.nome, referencia },
-      'automacao',
-    );
-    return { id: r.id, status: r.status };
+  @Post('leitura/:token')
+  @HttpCode(200)
+  async leitura(@Param('token') token: string, @Body() dto: LeituraDto) {
+    if (!(await this.acesso.tokenAutomacaoValido(token))) throw new ErroApi(401, 'TOKEN_INVALIDO', 'Token da automação inválido.');
+    const r = await this.rascunhos.receberLeitura({
+      rascunhoId: dto.rascunhoId,
+      inicio: { chatId: dto.chatId, contatoId: dto.contatoId, telefone: dto.telefone, nomeContato: dto.nomeContato, clienteId: dto.clienteId },
+      arquivo: { referencia: dto.arquivoId, nome: dto.arquivoNome, mimetype: dto.mimetype },
+      leitura: dto.leitura,
+    });
+    return { id: r.id, status: r.status, erro: r.erro };
   }
 }

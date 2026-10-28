@@ -3,7 +3,6 @@
 export interface Status {
   concentraOnline: boolean | null;
   concentraVerificadaEm: string | null;
-  iaLigada: boolean;
   catalogoCarregado: boolean;
 }
 

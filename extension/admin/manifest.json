@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "name": "Alquimia × Concentra — Admin",
   "description": "Impacto da integração (orçamentos, valores, uso da IA por atendente), modelo da mensagem de orçamento, tabela de tipos, conexão com o Concentra e auditoria.",
-  "author": { "name": "Kentro" },
+  "author": {
+    "name": "Kentro"
+  },
   "requires": [],
   "config": [
     {
@@ -19,8 +21,8 @@
       "key": "chave_admin",
       "type": "secret",
       "label": "Chave de admin",
-      "help": "A CHAVE_ADMIN do serviço no Doca. Esta extensão só aparece para administradores.",
-      "required": true
+      "help": "Deixe vazio na primeira instalação: a tela ativa a integração e mostra as duas chaves (admin e atendimento) para colar aqui e na extensão dos atendentes.",
+      "required": false
     }
   ],
   "contributions": [
@@ -30,8 +32,14 @@
       "title": "Concentra",
       "url": "admin.html",
       "icon": "icone.svg",
-      "presentation": { "mode": "fullscreen" },
-      "visibility": { "userTypes": [0] }
+      "presentation": {
+        "mode": "fullscreen"
+      },
+      "visibility": {
+        "userTypes": [
+          0
+        ]
+      }
     }
   ]
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { Api, mensagemDeErro } from '../../comum/api';
-import { Aviso, Carregando, Secao } from '../../comum/componentes';
+import { Aviso, BotaoCopiar, CaixaChave, Carregando, Secao } from '../../comum/componentes';
 import { haQuanto, inteiro } from '../../comum/formato';
 import { Icone } from '../../comum/icones';
 import { avisar } from '../../comum/omni';
@@ -204,9 +204,6 @@ export function AbaTipos({ api }: { api: Api }) {
 interface Status {
   concentra: { online: boolean | null; ultimoSucesso: string | null; ultimaFalha: string | null; ultimoErro: string | null; ultimoTempoMs: number | null };
   produtosNaBusca: number;
-  iaLigada: boolean;
-  modeloIa: string | null;
-  webhookKentroLigado: boolean;
   sincronizacoes: { recurso: string; ultimoSucesso: string | null; ultimaCargaTotal: string | null; registros: number; ultimoErro: string | null; emExecucao: boolean }[];
 }
 
@@ -309,19 +306,103 @@ export function AbaConexao({ api }: { api: Api }) {
         </div>
       </Secao>
 
-      <Secao icone="ia" titulo="Leitura de receita (IA)">
-        {status.iaLigada ? (
-          <Aviso tipo="ok">
-            Ligada · modelo <code>{status.modeloIa}</code>. O token da OpenAI fica na variável OPENAI_API_KEY do Doca.
-          </Aviso>
-        ) : (
-          <Aviso tipo="erro">Desligada: defina OPENAI_API_KEY nas variáveis do serviço no Doca.</Aviso>
-        )}
-        <p class="kt-muted">
-          Pré-montagem automática (a automação da Kentro avisa quando chega uma receita): {status.webhookKentroLigado ? 'ligada' : 'desligada (defina TOKEN_WEBHOOK_KENTRO no Doca)'}.
-        </p>
-      </Secao>
+      <LeituraReceita api={api} />
+      <Chaves api={api} />
     </>
+  );
+}
+
+interface Leitura {
+  url: string | null;
+  instrucao: string;
+  corpo: Record<string, string>;
+}
+
+/** O que a automação "Ler receita" da Kentro precisa, para copiar e colar. */
+function LeituraReceita({ api }: { api: Api }) {
+  const [leitura, setLeitura] = useState<Leitura | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  useEffect(() => {
+    api<Leitura>('/v1/admin/leitura').then(setLeitura, (e) => setErro(mensagemDeErro(e)));
+  }, [api]);
+  const trocar = async () => {
+    try {
+      setLeitura(await api<Leitura>('/v1/admin/leitura/token', { method: 'POST' }));
+      avisar('Token trocado: atualize a URL na automação da Kentro.');
+    } catch (e) {
+      avisar(mensagemDeErro(e), 'error');
+    }
+  };
+  return (
+    <Secao
+      icone="ia"
+      titulo="Leitura de receita (IA da Kentro)"
+      descricao="Quem lê a receita é a automação “Ler receita” da Kentro: elemento “Processar arquivo por IA” (aiProcessFile) com a instrução abaixo e o resultado na variável receita_lida, seguido de uma Requisição POST para a URL abaixo."
+      acoes={
+        <button type="button" class="kt-botao kt-botao-fantasma kt-botao-pequeno" onClick={trocar}>
+          Trocar token
+        </button>
+      }
+    >
+      {erro && <Aviso tipo="erro">{erro}</Aviso>}
+      {!leitura && !erro && <Carregando />}
+      {leitura && (
+        <>
+          <p class="kt-subtitulo">URL da requisição (POST, corpo JSON)</p>
+          <div class="kt-chave">
+            <div class="kt-chave-topo">
+              <strong>URL</strong>
+              <BotaoCopiar texto={leitura.url ?? ''} aoCopiar="URL copiada." />
+            </div>
+            <code class="kt-chave-valor">{leitura.url}</code>
+          </div>
+          <p class="kt-subtitulo">Corpo da requisição</p>
+          <div class="kt-chave">
+            <div class="kt-chave-topo">
+              <strong>JSON</strong>
+              <BotaoCopiar texto={JSON.stringify(leitura.corpo, null, 2)} aoCopiar="Corpo copiado." />
+            </div>
+            <pre class="kt-chave-valor">{JSON.stringify(leitura.corpo, null, 2)}</pre>
+          </div>
+          <details class="kt-sanfona">
+            <summary>Instrução do “Processar arquivo por IA”</summary>
+            <div class="kt-linha-acoes">
+              <BotaoCopiar texto={leitura.instrucao} aoCopiar="Instrução copiada." />
+            </div>
+            <pre class="kt-previa-instrucao">{leitura.instrucao}</pre>
+          </details>
+        </>
+      )}
+    </Secao>
+  );
+}
+
+/** Trocar a chave de atendimento (se vazou): a nova aparece uma vez e a antiga para na hora. */
+function Chaves({ api }: { api: Api }) {
+  const [nova, setNova] = useState<string | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const trocar = async () => {
+    setOcupado(true);
+    try {
+      setNova((await api<{ chaveAtendimento: string }>('/v1/admin/chaves/atendimento', { method: 'POST' })).chaveAtendimento);
+    } catch (e) {
+      avisar(mensagemDeErro(e), 'error');
+    } finally {
+      setOcupado(false);
+    }
+  };
+  return (
+    <Secao icone="chave" titulo="Chave de atendimento" descricao="Gere uma nova se a atual vazou. A anterior para de funcionar na hora: cole a nova na extensão dos atendentes logo em seguida.">
+      {nova ? (
+        <CaixaChave rotulo="Nova chave de atendimento" valor={nova}>
+          Cole em Configurações › Extensões instaladas › Alquimia × Concentra › Chave de atendimento.
+        </CaixaChave>
+      ) : (
+        <button type="button" class="kt-botao kt-botao-perigo" disabled={ocupado} onClick={trocar}>
+          Gerar nova chave de atendimento
+        </button>
+      )}
+    </Secao>
   );
 }
 
@@ -348,6 +429,8 @@ const ACOES: Record<string, string> = {
   'orcamento.mensagem': 'Enviou resumo no chat',
   'admin.config': 'Alterou configuração',
   'admin.sincronizar': 'Atualizou o cadastro',
+  'admin.chave_atendimento': 'Trocou a chave de atendimento',
+  'admin.token_automacao': 'Trocou o token da automação de leitura',
 };
 
 export function AbaAuditoria({ api }: { api: Api }) {

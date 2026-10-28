@@ -1,4 +1,5 @@
-// Leitura de receita (foto ou PDF) pela OpenAI, com saída em JSON de esquema fixo.
+// Leitura de receita (foto ou PDF) pela IA da própria Kentro (elemento aiProcessFile de uma automação),
+// com saída em JSON no formato abaixo. O serviço só recebe o JSON e casa com o cadastro.
 
 export interface ComponenteLido {
   nome: string;
@@ -36,76 +37,6 @@ export interface ReceitaLida {
   observacoes: string | null;
 }
 
-const texto = { type: ['string', 'null'] } as const;
-const numero = { type: ['number', 'null'] } as const;
-
-/** Esquema estrito (structured outputs): todo campo obrigatório, nulo quando não há. */
-export const ESQUEMA_RECEITA = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['eh_receita', 'legivel', 'paciente', 'prescritor', 'conselho', 'numero_conselho', 'uf_conselho', 'data_receita', 'controle_especial', 'itens', 'observacoes'],
-  properties: {
-    eh_receita: { type: 'boolean', description: 'A imagem é uma receita/prescrição?' },
-    legivel: { type: 'boolean', description: 'Dá para ler o essencial (itens e dosagens)?' },
-    paciente: { ...texto, description: 'Nome do paciente como escrito.' },
-    prescritor: { ...texto, description: 'Nome do médico/dentista/nutricionista.' },
-    conselho: { ...texto, description: 'CRM, CRO, CRN, CRF, CRMV, COREN…' },
-    numero_conselho: { ...texto, description: 'Número do registro, só dígitos.' },
-    uf_conselho: { ...texto, description: 'UF do registro (SP, MG…).' },
-    data_receita: { ...texto, description: 'Data da receita em DD/MM/AAAA.' },
-    controle_especial: { type: 'boolean', description: 'Receituário de controle especial, notificação (amarela/azul/branca) ou substância da Portaria 344.' },
-    itens: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: [
-          'tipo_item',
-          'forma_farmaceutica',
-          'quantidade_total',
-          'unidade_quantidade',
-          'posologia',
-          'componentes',
-          'nome_produto',
-          'apresentacao',
-          'quantidade_embalagens',
-          'confianca',
-          'observacao',
-        ],
-        properties: {
-          tipo_item: { type: 'string', enum: ['manipulado', 'acabado'] },
-          forma_farmaceutica: { ...texto, description: 'Manipulado: cápsula, creme, gel, loção, solução, shampoo, sachê, sublingual, sérum…' },
-          quantidade_total: { ...numero, description: 'Manipulado: o QSP / quantidade total (ex.: 60 cápsulas, 30 g, 100 ml).' },
-          unidade_quantidade: { ...texto, description: 'Unidade da quantidade total: caps, g, ml, saches, un.' },
-          posologia: { ...texto, description: 'Modo de usar, como escrito.' },
-          componentes: {
-            type: 'array',
-            description: 'Manipulado: cada ativo com a dose POR UNIDADE (por cápsula) ou a concentração (%). Acabado: vazio.',
-            items: {
-              type: 'object',
-              additionalProperties: false,
-              required: ['nome', 'dosagem', 'unidade', 'texto_original', 'confianca'],
-              properties: {
-                nome: { type: 'string', description: 'Nome do ativo por extenso, sem abreviação (ex.: "Vitamina D3", "Ácido hialurônico").' },
-                dosagem: numero,
-                unidade: { ...texto, description: 'MG, MCG, G, UI, %, ML, UN, BIL (bilhões de UFC).' },
-                texto_original: { type: 'string', description: 'A linha como está escrita na receita.' },
-                confianca: { type: 'number', description: '0 a 1: certeza da leitura deste componente.' },
-              },
-            },
-          },
-          nome_produto: { ...texto, description: 'Acabado: nome comercial do produto.' },
-          apresentacao: { ...texto, description: 'Acabado: apresentação (ex.: "60 cápsulas", "100 ml", "500 mg").' },
-          quantidade_embalagens: { ...numero, description: 'Acabado: quantas caixas/frascos.' },
-          confianca: { type: 'number', description: '0 a 1: certeza da leitura do item.' },
-          observacao: { ...texto, description: 'Dúvida da leitura (letra ilegível, dose ambígua…).' },
-        },
-      },
-    },
-    observacoes: texto,
-  },
-} as const;
-
 export const INSTRUCOES = `Você lê receitas médicas brasileiras para uma farmácia de manipulação montar o orçamento.
 A leitura é conferida por um atendente antes de qualquer envio: NUNCA invente. Na dúvida, deixe nulo, baixe a "confianca" e explique em "observacao".
 
@@ -119,36 +50,113 @@ Regras:
 - Receita de controle especial (notificação amarela/azul/branca, "receituário de controle especial", substâncias como benzodiazepínicos, anfetamínicos, sibutramina, isotretinoína, hormônios anabolizantes) → "controle_especial": true.
 - Se não for uma receita (foto de outra coisa), "eh_receita": false e itens vazio.`;
 
-export interface Arquivo {
-  base64: string;
-  mimetype: string;
-  nome: string;
+/** Exemplo do formato, para a instrução (o aiProcessFile não aceita esquema; o JSON vem do texto). */
+const EXEMPLO = {
+  eh_receita: true,
+  legivel: true,
+  paciente: 'Nome do paciente ou null',
+  prescritor: 'Nome do médico ou null',
+  conselho: 'CRM',
+  numero_conselho: '123456',
+  uf_conselho: 'SP',
+  data_receita: 'DD/MM/AAAA ou null',
+  controle_especial: false,
+  observacoes: null,
+  itens: [
+    {
+      tipo_item: 'manipulado',
+      forma_farmaceutica: 'cápsula',
+      quantidade_total: 60,
+      unidade_quantidade: 'caps',
+      posologia: 'Tomar 1 cápsula ao dia',
+      componentes: [{ nome: 'Vitamina D3', dosagem: 2000, unidade: 'UI', texto_original: 'Vit D3 2.000UI', confianca: 0.95 }],
+      nome_produto: null,
+      apresentacao: null,
+      quantidade_embalagens: null,
+      confianca: 0.9,
+      observacao: null,
+    },
+    {
+      tipo_item: 'acabado',
+      forma_farmaceutica: null,
+      quantidade_total: null,
+      unidade_quantidade: null,
+      posologia: 'Aplicar 1 ml 2x ao dia',
+      componentes: [],
+      nome_produto: 'Minoxidil 5%',
+      apresentacao: '100 ml',
+      quantidade_embalagens: 1,
+      confianca: 0.85,
+      observacao: null,
+    },
+  ],
+};
+
+/** Instrução do elemento aiProcessFile (copiada no admin e usada na automação criada pela integração). */
+export function instrucaoKentro(): string {
+  return `${INSTRUCOES}
+
+Responda SOMENTE com um JSON neste formato exato (mesmas chaves; use null quando não houver; confianca de 0 a 1):
+${JSON.stringify(EXEMPLO, null, 2)}`;
 }
 
-/** Resposta da OpenAI (Responses API): o JSON está no primeiro "output_text". */
-export function textoDaResposta(corpo: unknown): string | null {
-  const saida = (corpo as { output?: { type?: string; content?: { type?: string; text?: string }[] }[] })?.output;
-  if (!Array.isArray(saida)) return null;
-  for (const item of saida) {
-    for (const parte of item.content ?? []) {
-      if (parte.type === 'output_text' && typeof parte.text === 'string') return parte.text;
+/**
+ * O JSON da leitura como a automação entrega: objeto, texto JSON, ou texto com ```json … ```.
+ * Devolve null se não der para entender (a automação ou a IA falhou).
+ */
+export function interpretarLeitura(valor: unknown): ReceitaLida | null {
+  let obj: unknown = valor;
+  if (typeof valor === 'string') {
+    const texto = valor.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    const inicio = texto.indexOf('{');
+    const fim = texto.lastIndexOf('}');
+    if (inicio < 0 || fim <= inicio) return null;
+    try {
+      obj = JSON.parse(texto.slice(inicio, fim + 1));
+    } catch {
+      return null;
     }
   }
-  return null;
-}
-
-/** Corpo da requisição: imagem vai como input_image; PDF como input_file. */
-export function corpoOpenAi(modelo: string, arquivo: Arquivo): Record<string, unknown> {
-  const dataUrl = `data:${arquivo.mimetype};base64,${arquivo.base64}`;
-  const anexo =
-    arquivo.mimetype === 'application/pdf'
-      ? { type: 'input_file', filename: arquivo.nome || 'receita.pdf', file_data: dataUrl }
-      : { type: 'input_image', image_url: dataUrl, detail: 'high' };
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+  const r = obj as Partial<ReceitaLida>;
+  const textoOuNulo = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  const numeroOuNulo = (v: unknown) => {
+    // "1.000,5" (pt-BR) e "0.95" (ponto decimal): o ponto só é milhar quando há vírgula.
+    const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v.includes(',') ? v.replace(/\./g, '').replace(',', '.') : v) : NaN;
+    return Number.isFinite(n) ? n : null;
+  };
+  const confianca = (v: unknown) => Math.max(0, Math.min(1, numeroOuNulo(v) ?? 0.5));
   return {
-    model: modelo,
-    instructions: INSTRUCOES,
-    input: [{ role: 'user', content: [{ type: 'input_text', text: 'Leia esta receita e devolva os dados no formato pedido.' }, anexo] }],
-    text: { format: { type: 'json_schema', name: 'receita', strict: true, schema: ESQUEMA_RECEITA } },
-    store: false,
+    eh_receita: r.eh_receita !== false,
+    legivel: r.legivel !== false,
+    paciente: textoOuNulo(r.paciente),
+    prescritor: textoOuNulo(r.prescritor),
+    conselho: textoOuNulo(r.conselho),
+    numero_conselho: textoOuNulo(r.numero_conselho != null ? String(r.numero_conselho) : null),
+    uf_conselho: textoOuNulo(r.uf_conselho),
+    data_receita: textoOuNulo(r.data_receita),
+    controle_especial: r.controle_especial === true,
+    observacoes: textoOuNulo(r.observacoes),
+    itens: (Array.isArray(r.itens) ? r.itens : []).map((i) => ({
+      tipo_item: i?.tipo_item === 'acabado' ? 'acabado' : 'manipulado',
+      forma_farmaceutica: textoOuNulo(i?.forma_farmaceutica),
+      quantidade_total: numeroOuNulo(i?.quantidade_total),
+      unidade_quantidade: textoOuNulo(i?.unidade_quantidade),
+      posologia: textoOuNulo(i?.posologia),
+      componentes: (Array.isArray(i?.componentes) ? i.componentes : [])
+        .filter((c) => c && textoOuNulo(c.nome))
+        .map((c) => ({
+          nome: String(c.nome).trim(),
+          dosagem: numeroOuNulo(c.dosagem),
+          unidade: textoOuNulo(c.unidade),
+          texto_original: textoOuNulo(c.texto_original) ?? String(c.nome).trim(),
+          confianca: confianca(c.confianca),
+        })),
+      nome_produto: textoOuNulo(i?.nome_produto),
+      apresentacao: textoOuNulo(i?.apresentacao),
+      quantidade_embalagens: numeroOuNulo(i?.quantidade_embalagens),
+      confianca: confianca(i?.confianca),
+      observacao: textoOuNulo(i?.observacao),
+    })),
   };
 }

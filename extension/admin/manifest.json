@@ -1,12 +1,13 @@
 {
   "manifestVersion": 1,
   "id": "alquimia.concentra-admin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "name": "Alquimia × Concentra — Admin",
   "description": "Impacto da integração (orçamentos, valores, uso da IA por atendente), modelo da mensagem de orçamento, tabela de tipos, conexão com o Concentra e auditoria.",
   "author": {
     "name": "Kentro"
   },
+  "icon": "icone.svg",
   "requires": [],
   "config": [
     {

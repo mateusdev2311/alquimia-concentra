@@ -99,8 +99,7 @@ export class ConcentraClient {
         signal: AbortSignal.timeout(opcoes.tempoLimite ?? this.config.concentra.tempoLimite),
       });
     } catch (erro) {
-      const motivo = (erro as Error)?.name === 'TimeoutError' ? 'tempo esgotado' : 'sem conexão';
-      throw this.falhou(funcao, inicio, new FalhaConcentra('indisponivel', INDISPONIVEL, motivo));
+      throw this.falhou(funcao, inicio, new FalhaConcentra('indisponivel', INDISPONIVEL, motivoDeRede(erro)));
     }
 
     let texto: string;
@@ -164,6 +163,27 @@ export class ConcentraClient {
     this.logger.warn(`${funcao}: ${erro.codigo} ${erro.detalhe ?? ''} (${Date.now() - inicio} ms)`);
     return erro;
   }
+}
+
+const MOTIVOS_DE_REDE: Record<string, string> = {
+  ENOTFOUND: 'o endereço (DNS) não foi encontrado',
+  EAI_AGAIN: 'o DNS não respondeu',
+  ECONNREFUSED: 'conexão recusada na porta (servidor desligado ou porta fechada)',
+  ECONNRESET: 'a conexão foi derrubada no meio',
+  ETIMEDOUT: 'tempo esgotado ao conectar (firewall ou servidor fora do ar)',
+  UND_ERR_CONNECT_TIMEOUT: 'tempo esgotado ao conectar (firewall ou servidor fora do ar)',
+  UND_ERR_SOCKET: 'a conexão foi derrubada no meio',
+  EHOSTUNREACH: 'sem rota até o servidor da farmácia',
+  ENETUNREACH: 'sem rota até o servidor da farmácia',
+};
+
+/** O motivo real de uma falha de rede: o fetch do Node só diz "fetch failed" e guarda o código em `cause`. */
+export function motivoDeRede(erro: unknown): string {
+  const e = erro as { name?: string; code?: string; cause?: { code?: string; message?: string } };
+  if (e?.name === 'TimeoutError' || e?.name === 'AbortError') return 'tempo esgotado esperando a resposta';
+  const codigo = e?.cause?.code ?? e?.code;
+  if (codigo && MOTIVOS_DE_REDE[codigo]) return `${MOTIVOS_DE_REDE[codigo]} (${codigo})`;
+  return codigo ? `sem conexão (${codigo})` : `sem conexão${e?.cause?.message ? ` (${e.cause.message})` : ''}`;
 }
 
 /** A mensagem de `{"erro": "..."}` ou `[{"erro": "..."}]`; null se a resposta não é um erro. */

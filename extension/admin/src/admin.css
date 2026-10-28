@@ -242,3 +242,10 @@ th[aria-sort] .kt-ordenar { color: var(--ext-color-primary); }
 .kt-codigo { min-width: 90px; max-width: 110px; font-family: ui-monospace, Consolas, monospace; }
 .kt-previa-instrucao { white-space: pre-wrap; font-size: .8em; max-height: 320px; overflow: auto; margin: 8px 0 0; padding: 10px; border-radius: 8px; background: var(--kt-superficie); }
 pre.kt-chave-valor { white-space: pre-wrap; margin: 0; }
+.kt-diagnostico { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 6px; }
+.kt-diagnostico li { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: .92em; padding: 8px 10px; border-radius: 8px; background: var(--kt-superficie); }
+.kt-diagnostico .kt-icone { align-self: center; }
+.kt-passo-ok .kt-icone { color: var(--ext-color-success); }
+.kt-passo-erro { background: var(--kt-erro-suave) !important; }
+.kt-passo-erro .kt-icone { color: var(--ext-color-error); }
+.kt-passo-info .kt-icone { color: var(--kt-info-cor); }

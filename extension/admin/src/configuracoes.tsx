@@ -207,12 +207,17 @@ interface Status {
   sincronizacoes: { recurso: string; ultimoSucesso: string | null; ultimaCargaTotal: string | null; registros: number; ultimoErro: string | null; emExecucao: boolean }[];
 }
 
+interface Diagnostico {
+  passos: { nome: string; ok: boolean; detalhe: string }[];
+  ipSaida: string | null;
+}
+
 const NOMES: Record<string, string> = { produtos: 'Produtos', prescritores: 'Prescritores', clientes: 'Clientes (2 anos de compras)' };
 
 export function AbaConexao({ api }: { api: Api }) {
   const [status, setStatus] = useState<Status | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const [teste, setTeste] = useState<{ ok: boolean; ms: number; mensagem?: string } | null>(null);
+  const [teste, setTeste] = useState<{ ok: boolean; ms: number; mensagem?: string; diagnostico?: Diagnostico } | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const carregar = () => api<Status>('/v1/admin/status').then(setStatus, (e) => setErro(mensagemDeErro(e)));
   useEffect(() => {
@@ -268,6 +273,26 @@ export function AbaConexao({ api }: { api: Api }) {
         )}
         {teste && (
           <Aviso tipo={teste.ok ? 'ok' : 'erro'}>{teste.ok ? `Teste ok: respondeu em ${teste.ms} ms.` : `Teste falhou: ${teste.mensagem}`}</Aviso>
+        )}
+        {teste?.diagnostico && (
+          <ul class="kt-diagnostico">
+            {teste.diagnostico.passos.map((p) => (
+              <li key={p.nome} class={p.ok ? 'kt-passo-ok' : 'kt-passo-erro'}>
+                <Icone nome={p.ok ? 'check' : 'alerta'} tamanho={14} />
+                <strong>{p.nome}</strong>
+                <span>{p.detalhe}</span>
+              </li>
+            ))}
+            {teste.diagnostico.ipSaida && (
+              <li class="kt-passo-info">
+                <Icone nome="info" tamanho={14} />
+                <strong>IP de saída deste servidor</strong>
+                <span>
+                  <code>{teste.diagnostico.ipSaida}</code> (é este IP que chega na farmácia; se houver firewall, ele precisa estar liberado)
+                </span>
+              </li>
+            )}
+          </ul>
         )}
         <p class="kt-muted">O endereço e a chave da API ficam só nas variáveis do serviço no Doca (CONCENTRA_API_URL e CONCENTRA_API_KEY).</p>
       </Secao>

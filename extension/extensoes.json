@@ -1,4 +1,16 @@
 [
-  { "pasta": "admin", "html": "admin.html", "arquivos": ["icone.svg"] },
-  { "pasta": "atendimento", "html": "painel.html", "arquivos": [] }
+  {
+    "pasta": "admin",
+    "html": "admin.html",
+    "arquivos": [
+      "icone.svg"
+    ]
+  },
+  {
+    "pasta": "atendimento",
+    "html": "painel.html",
+    "arquivos": [
+      "icone.svg"
+    ]
+  }
 ]

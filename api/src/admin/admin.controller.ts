@@ -9,7 +9,8 @@ import { Recurso, RECURSOS, SincronizacaoService } from '../catalogo/sincronizac
 import { ErroApi } from '../comum/erros';
 import { PrismaService } from '../comum/prisma.service';
 import { ConfigApp, CONFIG_APP } from '../comum/config';
-import { ConcentraClient } from '../concentra/concentra.client';
+import { ConcentraClient, FalhaConcentra } from '../concentra/concentra.client';
+import { diagnosticar } from '../concentra/diagnostico';
 import { instrucaoKentro } from '../ia/leitura';
 import { StatusService } from '../consultas/status.service';
 import { ConfiguracoesService, TipoFormula } from '../orcamento/configuracoes.service';
@@ -148,16 +149,24 @@ export class AdminController {
     return this.status.resumo();
   }
 
-  /** Uma consulta leve (busca de produto) para ver se a API da farmácia responde. */
+  /**
+   * Uma consulta leve (busca de produto) e, junto, o caminho até a farmácia passo a passo:
+   * DNS do DuckDNS, conexão na porta e o IP de saída deste servidor (o que o TI libera num firewall).
+   */
   @Post('testar-conexao')
   async testar() {
     const inicio = Date.now();
-    try {
-      await this.concentra.chamar('listar_produtos_por_descricao', { produto: 'CAPSULA' }, { tempoLimite: 15_000 });
-      return { ok: true, ms: Date.now() - inicio };
-    } catch (erro) {
-      return { ok: false, ms: Date.now() - inicio, mensagem: erro instanceof ErroApi ? erro.mensagem : 'Falha desconhecida.' };
-    }
+    const [api, diagnostico] = await Promise.all([
+      this.concentra
+        .chamar('listar_produtos_por_descricao', { produto: 'CAPSULA' }, { tempoLimite: 15_000 })
+        .then(() => ({ ok: true as const, mensagem: undefined as string | undefined }))
+        .catch((erro: unknown) => ({
+          ok: false as const,
+          mensagem: erro instanceof FalhaConcentra ? `${erro.mensagem}${erro.detalhe ? ` Motivo: ${erro.detalhe}.` : ''}` : erro instanceof ErroApi ? erro.mensagem : 'Falha desconhecida.',
+        })),
+      diagnosticar(this.configApp.concentra.url),
+    ]);
+    return { ...api, ms: Date.now() - inicio, diagnostico };
   }
 
   @Post('sincronizar/:recurso')

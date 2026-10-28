@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { ConfigApp, CONFIG_APP } from '../comum/config';
 import { PrismaService } from '../comum/prisma.service';
 import { dataBr } from '../comum/texto';
-import { ConcentraClient, comoLista } from '../concentra/concentra.client';
+import { ConcentraClient, FalhaConcentra, comoLista } from '../concentra/concentra.client';
 import { cliente, ClienteConcentra, prescritor, produtoCadastro } from '../concentra/formatos';
 import { CatalogoService } from './catalogo.service';
 
@@ -88,7 +88,8 @@ export class SincronizacaoService implements OnApplicationBootstrap, OnModuleDes
       this.logger.log(`${recurso} (${modo}): ${n} recebidos, ${total} no espelho (${Date.now() - inicio} ms)`);
       return n;
     } catch (erro) {
-      const mensagem = erro instanceof Error ? erro.message : String(erro);
+      const mensagem =
+        erro instanceof FalhaConcentra ? `${erro.mensagem}${erro.detalhe ? ` Motivo: ${erro.detalhe}.` : ''}` : erro instanceof Error ? erro.message : String(erro);
       await this.prisma.sincronizacao.update({ where: { recurso }, data: { ultimoErro: mensagem.slice(0, 500), emExecucaoAte: null } });
       this.logger.warn(`${recurso} (${modo}) falhou: ${mensagem}`);
       throw erro;

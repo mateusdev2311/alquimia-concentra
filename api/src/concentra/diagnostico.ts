@@ -57,6 +57,18 @@ export async function diagnosticar(urlApi: string): Promise<Diagnostico> {
   if (ip) {
     const tcp = await portaAbre(ip, porta);
     passos.push({ nome: `Porta ${porta} em ${ip}`, ...tcp });
+    if (!tcp.ok) {
+      // Controle: a mesma porta num servidor público que aceita qualquer porta (portquiz.net).
+      // Abre lá e não na farmácia → o bloqueio é na farmácia; não abre em lugar nenhum → é a saída deste servidor.
+      const controle = await portaAbre('portquiz.net', porta);
+      passos.push({
+        nome: `Controle: porta ${porta} em portquiz.net`,
+        ok: controle.ok,
+        detalhe: controle.ok
+          ? `${controle.detalhe}: a saída deste servidor pela porta ${porta} funciona, então o bloqueio está na FARMÁCIA (modem ou firewall do servidor)`
+          : `${controle.detalhe}: este servidor não consegue sair pela porta ${porta}; o bloqueio está no DOCA`,
+      });
+    }
     if (tcp.ok) {
       try {
         const r = await fetch(urlApi, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(TEMPO) });

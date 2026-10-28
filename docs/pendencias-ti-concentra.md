@@ -17,6 +17,12 @@ Levantadas em 28/10/2026, com consultas só de leitura à API `apiconc` da Alqui
 
 ## Para o TI da farmácia
 
+0. **URGENTE: liberar o servidor do Doca (IP 169.58.192.233) na porta 3000.** Em 28/10/2026, a partir do Doca, o DNS resolve (`alquimiabraganca.duckdns.org` → 177.189.75.241), mas a conexão TCP na porta 3000 não responde em 8 s. Da rede de um dos técnicos, a mesma porta abre em 33 ms. Conferir:
+   - o redirecionamento da porta 3000 no modem (alguns modens só redirecionam para certas origens ou bloqueiam IPs de fora do Brasil);
+   - a regra do Firewall do Windows no servidor 192.168.1.250 (o escopo de "Endereço IP remoto" deve ser Qualquer, ou incluir 169.58.192.233);
+   - antivírus ou firewall de terceiros no servidor.
+
+   Depois, teste em Admin › Conexão e cadastro › Testar conexão: o passo "Porta 3000" precisa ficar verde.
 1. **A porta 3000 está aberta para a internet, em HTTP sem criptografia.** A chave da API trafega sem proteção entre o Doca e a farmácia. Por decisão da Alquimia (28/10/2026), a porta **não** será restringida por IP. Se um dia quiserem proteger sem mexer no firewall, a saída é um túnel (Cloudflare Tunnel, Tailscale ou VPN) até o servidor `192.168.1.250`.
 2. **Servidor desligado = integração parada.** O cartão do atendente avisa "sistema da farmácia fora do ar", e o admin mostra desde quando. A busca de produto e o cliente já identificado continuam funcionando, pela cópia local.
 3. **DuckDNS:** confirmar que o atualizador do IP dinâmico roda no próprio servidor (ou no modem) e volta sozinho depois de uma queda de energia.

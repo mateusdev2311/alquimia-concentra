@@ -1,0 +1,36 @@
+{
+  "manifestVersion": 1,
+  "id": "alquimia.concentra",
+  "version": "0.1.0",
+  "name": "Alquimia × Concentra",
+  "description": "No atendimento: cliente do Concentra pelo telefone, receitas, orçamentos, produtos e fórmulas, e a receita do chat virando orçamento com IA (sempre revisado pelo atendente).",
+  "author": { "name": "Kentro" },
+  "requires": [],
+  "config": [
+    {
+      "key": "api_url",
+      "type": "url",
+      "label": "Endereço da integração",
+      "help": "Já vem preenchido. Só altere se o suporte pedir.",
+      "required": true,
+      "default": "__URL_PUBLICA__"
+    },
+    {
+      "key": "chave_atendimento",
+      "type": "secret",
+      "label": "Chave de atendimento",
+      "help": "A CHAVE_ATENDIMENTO do serviço no Doca. Nunca cole aqui a chave de admin: esta chegará ao navegador de todos os atendentes.",
+      "required": true
+    },
+    {
+      "key": "campo_cliente",
+      "type": "number",
+      "label": "Id do campo extra \"ID Concentra\" do contato",
+      "help": "Com ele, o cliente confirmado fica gravado no contato e os próximos atendimentos já abrem vinculados. Vazio = só identifica pelo telefone.",
+      "required": false
+    }
+  ],
+  "contributions": [
+    { "id": "painel", "type": "chatPanel", "title": "Concentra", "url": "painel.html" }
+  ]
+}

@@ -1,0 +1,80 @@
+/* Cartão lateral do atendimento: estreito (~360 px), cartões compactos. */
+body { background: var(--kt-fundo); }
+.kt-painel { padding: 10px; }
+.kt-painel .kt-card { padding: 12px; margin-bottom: 10px; border-radius: 12px; }
+.kt-painel .kt-card-topo { margin-bottom: 10px; }
+.kt-painel h3 { margin-bottom: 4px; font-size: 1em; }
+.kt-painel .kt-vazio { padding: 18px 8px; }
+.kt-painel .kt-aviso { padding: 9px 11px; margin-bottom: 10px; font-size: .9em; }
+.kt-painel .kt-campo { margin-bottom: 10px; }
+.kt-painel .kt-campo > span { font-size: .8em; margin-bottom: 4px; }
+.kt-painel .kt-campo input, .kt-painel .kt-campo select, .kt-painel .kt-campo textarea { padding: 7px 9px; font-size: .92em; max-width: none; }
+.kt-painel .kt-campo textarea { font-family: inherit; font-size: .9em; }
+
+/* Abas */
+.kt-abas-painel { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; border-radius: 12px; background: var(--kt-superficie-2); margin-bottom: 10px; }
+.kt-aba-painel { display: inline-flex; align-items: center; justify-content: center; gap: 6px; font: inherit; font-size: .86em; font-weight: 600; color: var(--ext-color-text-muted); background: transparent; border: 0; border-radius: 9px; padding: 7px 4px; cursor: pointer; }
+.kt-aba-painel[aria-selected="true"] { background: var(--ext-color-bg); color: var(--ext-color-primary); box-shadow: var(--kt-sombra); }
+.kt-aba-painel .kt-contador { font-size: .78em; min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--ext-color-primary); color: var(--ext-color-on-primary); }
+
+/* Chips (sub-abas das consultas) */
+.kt-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+.kt-chip { font: inherit; font-size: .8em; font-weight: 600; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--kt-linha-forte); background: var(--ext-color-bg); color: var(--ext-color-text); cursor: pointer; }
+.kt-chip[aria-pressed="true"] { border-color: var(--ext-color-primary); background: var(--ext-color-primary); color: var(--ext-color-on-primary); }
+
+/* Linhas de dados (cliente, receita) */
+.kt-dados { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 0; font-size: .88em; }
+.kt-dados dt { color: var(--ext-color-text-muted); font-weight: 600; }
+.kt-dados dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.kt-nome-cliente { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.kt-nome-cliente strong { font-size: 1.02em; line-height: 1.25; }
+
+/* Listas clicáveis */
+.kt-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.kt-lista > li { border: 1px solid var(--kt-linha); border-radius: 10px; padding: 8px 10px; background: var(--ext-color-bg); }
+.kt-lista > li.kt-clicavel { cursor: pointer; }
+.kt-lista > li.kt-clicavel:hover { border-color: var(--kt-linha-forte); background: var(--kt-superficie); }
+.kt-lista > li.kt-ativo { border-color: var(--ext-color-primary); background: color-mix(in srgb, var(--ext-color-primary) 5%, var(--ext-color-bg)); }
+.kt-linha-topo { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.kt-linha-topo strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.kt-itens { margin: 4px 0 0; padding-left: 16px; font-size: .82em; color: var(--ext-color-text-muted); }
+
+/* Linha de busca: campo + botão */
+.kt-busca { display: flex; gap: 6px; margin-bottom: 8px; }
+.kt-busca input { flex: 1; min-width: 0; font: inherit; font-size: .92em; padding: 7px 9px; border: 1px solid var(--kt-linha-forte); border-radius: var(--kt-r-p); background: var(--ext-color-bg); color: var(--ext-color-text); }
+.kt-busca input:focus { outline: none; border-color: var(--ext-color-primary); box-shadow: var(--kt-foco); }
+.kt-grade-3 { display: grid; grid-template-columns: 1.4fr .8fr .8fr; gap: 6px; }
+.kt-grade-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+
+/* Editor do orçamento */
+.kt-formula { border: 1px solid var(--kt-linha); border-radius: 12px; padding: 10px; margin-bottom: 10px; background: var(--ext-color-bg); }
+.kt-formula-topo { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.kt-formula-topo strong { flex: 1; }
+.kt-componente { border-top: 1px dashed var(--kt-linha); padding: 8px 0 2px; }
+.kt-componente:first-of-type { border-top: 0; }
+.kt-componente-atencao { background: var(--kt-aviso-suave); margin: 0 -10px; padding: 8px 10px 2px; border-top: 0; }
+.kt-lido { font-size: .78em; color: var(--ext-color-text-muted); margin: 0 0 4px; font-style: italic; }
+.kt-produto-escolhido { display: flex; align-items: center; gap: 6px; font-size: .88em; font-weight: 600; margin-bottom: 6px; }
+.kt-produto-escolhido span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.kt-produto-escolhido code { font-size: .85em; color: var(--ext-color-text-muted); font-weight: 400; }
+.kt-dose { display: grid; grid-template-columns: 1fr 86px 30px; gap: 6px; align-items: center; }
+.kt-dose input, .kt-dose select, .kt-entrada { font: inherit; font-size: .9em; padding: 6px 8px; border: 1px solid var(--kt-linha-forte); border-radius: 8px; background: var(--ext-color-bg); color: var(--ext-color-text); width: 100%; min-width: 0; }
+.kt-dose input:focus, .kt-dose select:focus, .kt-entrada:focus { outline: none; border-color: var(--ext-color-primary); }
+.kt-icone-botao { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; border: 0; background: transparent; color: var(--ext-color-text-muted); cursor: pointer; }
+.kt-icone-botao:hover { background: var(--kt-superficie-2); color: var(--ext-color-error); }
+.kt-alerta-linha { display: flex; gap: 5px; align-items: flex-start; font-size: .8em; color: var(--kt-aviso-cor); margin: 4px 0; }
+.kt-alerta-linha .kt-icone { margin-top: 2px; }
+.kt-alerta-erro { color: var(--ext-color-error); }
+.kt-sugestoes { list-style: none; margin: 4px 0 8px; padding: 0; border: 1px solid var(--kt-linha); border-radius: 8px; max-height: 220px; overflow: auto; background: var(--ext-color-bg); box-shadow: var(--kt-sombra-alta); }
+.kt-sugestoes li { padding: 6px 8px; font-size: .84em; cursor: pointer; border-bottom: 1px solid var(--kt-linha); }
+.kt-sugestoes li:last-child { border-bottom: 0; }
+.kt-sugestoes li:hover, .kt-sugestoes li:focus { background: var(--kt-suave); outline: none; }
+.kt-sugestoes small { display: block; color: var(--ext-color-text-muted); }
+.kt-barra-envio { position: sticky; bottom: 0; background: var(--kt-fundo); padding: 8px 0 2px; display: grid; gap: 6px; }
+.kt-barra-envio .kt-botao { width: 100%; justify-content: center; }
+.kt-resultado { text-align: center; padding: 8px 0; }
+.kt-resultado .kt-valor { font-size: 1.6em; font-weight: 700; letter-spacing: -0.02em; }
+.kt-mensagem { width: 100%; min-height: 180px; font: inherit; font-size: .88em; padding: 8px; border: 1px solid var(--kt-linha-forte); border-radius: 8px; background: var(--ext-color-bg); color: var(--ext-color-text); resize: vertical; }
+.kt-miniatura-receita { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: var(--kt-superficie-2); flex: none; display: inline-flex; align-items: center; justify-content: center; color: var(--ext-color-text-muted); }
+.kt-imagem-receita { width: 100%; border-radius: 10px; border: 1px solid var(--kt-linha); }
+.kt-rodape { text-align: center; font-size: .72em; color: var(--ext-color-text-muted); margin-top: 6px; }

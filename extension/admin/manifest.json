@@ -1,0 +1,37 @@
+{
+  "manifestVersion": 1,
+  "id": "alquimia.concentra-admin",
+  "version": "0.1.0",
+  "name": "Alquimia × Concentra — Admin",
+  "description": "Impacto da integração (orçamentos, valores, uso da IA por atendente), modelo da mensagem de orçamento, tabela de tipos, conexão com o Concentra e auditoria.",
+  "author": { "name": "Kentro" },
+  "requires": [],
+  "config": [
+    {
+      "key": "api_url",
+      "type": "url",
+      "label": "Endereço da integração",
+      "help": "Já vem preenchido. Só altere se o suporte pedir.",
+      "required": true,
+      "default": "__URL_PUBLICA__"
+    },
+    {
+      "key": "chave_admin",
+      "type": "secret",
+      "label": "Chave de admin",
+      "help": "A CHAVE_ADMIN do serviço no Doca. Esta extensão só aparece para administradores.",
+      "required": true
+    }
+  ],
+  "contributions": [
+    {
+      "id": "admin",
+      "type": "topMenu",
+      "title": "Concentra",
+      "url": "admin.html",
+      "icon": "icone.svg",
+      "presentation": { "mode": "fullscreen" },
+      "visibility": { "userTypes": [0] }
+    }
+  ]
+}

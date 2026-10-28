@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Espelho do cadastro de produtos da Concentra (listar_info_produtos_por_data). Refeito pela sincronização.
+model Produto {
+  codigo       String   @id
+  descricao    String
+  /// 00 matéria-prima (inclui cápsulas e excipientes), 05 embalagem, 10/15 produto acabado, 20 consumo.
+  familia      String
+  unidade      String
+  /// custo × fator_de_preco, por unidade (ex.: por grama).
+  preco        Float
+  controlado   Boolean
+  /// Portarias marcadas como true (especial, psicotropico, antimicrobiano…).
+  portarias    String[]
+  excluido     Boolean
+  /// Este registro é um sinônimo; o produto que vai na fórmula é o `principal`.
+  sinonimo     Boolean
+  principal    String?
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@map("produtos")
+}
+
+/// Espelho dos prescritores (listar_info_prescritores_por_data), para conferir o CRM lido na receita.
+model Prescritor {
+  /// conselho + UF + número sem zeros à esquerda (ex.: "CRM-SP-134501").
+  chave        String   @id
+  conselho     String
+  uf           String
+  numero       String
+  nome         String
+  especialidade String?
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@index([numero])
+  @@map("prescritores")
+}
+
+/// Índice de clientes por telefone (a API da Concentra só busca por nome). Refeito pela sincronização.
+model Cliente {
+  /// id do cliente no ERP.
+  id            String    @id
+  nome          String
+  /// DDD + 8 últimos dígitos de cada telefone ("1799887766"): casa com e sem o nono dígito.
+  chavesTelefone String[] @map("chaves_telefone")
+  telefones     String[]
+  cpf           String?
+  email         String?
+  endereco      Json?
+  nascimento    String?
+  sexo          String?
+  ultimaCompra  DateTime? @map("ultima_compra") @db.Date
+  atualizadoEm  DateTime  @updatedAt @map("atualizado_em")
+
+  @@index([chavesTelefone], type: Gin)
+  @@map("clientes")
+}
+
+enum StatusRascunho {
+  lendo
+  pronto
+  erro
+  enviado
+  descartado
+}
+
+enum OrigemRascunho {
+  manual
+  ia
+  automacao
+}
+
+/// Orçamento em montagem no painel. Apagado 30 dias depois (o que foi enviado fica em orcamentos_enviados).
+model Rascunho {
+  id            String         @id @default(uuid()) @db.Uuid
+  chatId        String         @map("chat_id")
+  contatoId     String?        @map("contato_id")
+  usuarioId     String?        @map("usuario_id")
+  usuarioNome   String?        @map("usuario_nome")
+  origem        OrigemRascunho
+  status        StatusRascunho
+  /// Dados do arquivo da receita (nome, tipo, referência na Kentro). A imagem em si nunca é gravada.
+  arquivo       Json?
+  /// O que a IA leu, sem alteração (para medir quanto o atendente corrigiu).
+  leitura       Json?
+  /// O orçamento editável: paciente, fone, prescritor, crm, formulas[].
+  dados         Json
+  erro          String?
+  /// Mensagem da IA e tempo de leitura, para o painel do admin.
+  segundosLeitura Float?       @map("segundos_leitura")
+  criadoEm      DateTime       @default(now()) @map("criado_em")
+  atualizadoEm  DateTime       @updatedAt @map("atualizado_em")
+
+  @@index([chatId])
+  @@index([criadoEm])
+  @@map("rascunhos")
+}
+
+/// Orçamento gravado no ERP pela integração: só o que os gráficos precisam, sem dados do paciente.
+model OrcamentoEnviado {
+  id            String         @id @default(uuid()) @db.Uuid
+  rascunhoId    String?        @map("rascunho_id") @db.Uuid
+  numero        String?
+  usuarioId     String?        @map("usuario_id")
+  usuarioNome   String?        @map("usuario_nome")
+  origem        OrigemRascunho
+  formulas      Int
+  componentes   Int
+  /// Componentes que o atendente trocou ou corrigiu em relação à leitura da IA.
+  corrigidos    Int            @default(0)
+  valorLiquido  Float?         @map("valor_liquido")
+  valorBruto    Float?         @map("valor_bruto")
+  segundosMontagem Float?      @map("segundos_montagem")
+  criadoEm      DateTime       @default(now()) @map("criado_em")
+
+  @@index([criadoEm])
+  @@map("orcamentos_enviados")
+}
+
+/// Auditoria (LGPD): quem consultou, criou ou enviou o quê. Guardada por 12 meses.
+model Evento {
+  id          BigInt   @id @default(autoincrement())
+  usuarioId   String?  @map("usuario_id")
+  usuarioNome String?  @map("usuario_nome")
+  /// ex.: cliente.buscar, receita.consultar, receita.imagem, receita.ler, orcamento.enviar, admin.config
+  acao        String
+  /// Referência curta do alvo (número da receita, do orçamento, id do cliente). Nunca CPF ou nome.
+  alvo        String?
+  detalhes    Json?
+  criadoEm    DateTime @default(now()) @map("criado_em")
+
+  @@index([criadoEm])
+  @@index([acao, criadoEm])
+  @@map("eventos")
+}
+
+/// Configurações editadas no admin (modelo da mensagem, tabela de tipos).
+model Configuracao {
+  chave        String   @id
+  valor        Json
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  @@map("configuracoes")
+}
+
+/// Estado de cada sincronização (produtos, prescritores, clientes), mostrado no admin.
+model Sincronizacao {
+  recurso         String    @id
+  ultimaTentativa DateTime? @map("ultima_tentativa")
+  ultimoSucesso   DateTime? @map("ultimo_sucesso")
+  ultimaCargaTotal DateTime? @map("ultima_carga_total")
+  registros       Int       @default(0)
+  ultimoErro      String?   @map("ultimo_erro")
+  emExecucaoAte   DateTime? @map("em_execucao_ate")
+
+  @@map("sincronizacoes")
+}

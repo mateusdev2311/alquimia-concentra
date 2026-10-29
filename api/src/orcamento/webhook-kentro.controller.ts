@@ -10,10 +10,12 @@ const texto = ({ value }: { value: unknown }) => (value == null || value === '' 
 
 /** O que a automação "Ler receita" da Kentro manda depois do aiProcessFile. */
 class LeituraDto {
+  /** Obrigatório só sem rascunhoId: disparada pelo cartão, a automação pode não ter atendimento no contexto. */
   @Transform(texto)
+  @IsOptional()
   @IsString()
   @MaxLength(40)
-  chatId!: string;
+  chatId?: string;
 
   /** Vem do cartão (omni.runAutomation); vazio na pré-montagem disparada pela mensagem recebida. */
   @Transform(texto)
@@ -83,9 +85,10 @@ export class WebhookKentroController {
   @HttpCode(200)
   async leitura(@Param('token') token: string, @Body() dto: LeituraDto) {
     if (!(await this.acesso.tokenAutomacaoValido(token))) throw new ErroApi(401, 'TOKEN_INVALIDO', 'Token da automação inválido.');
+    if (!dto.rascunhoId && !dto.chatId) throw new ErroApi(400, 'SEM_ATENDIMENTO', 'Informe chatId ou rascunhoId.');
     const r = await this.rascunhos.receberLeitura({
       rascunhoId: dto.rascunhoId,
-      inicio: { chatId: dto.chatId, contatoId: dto.contatoId, telefone: dto.telefone, nomeContato: dto.nomeContato, clienteId: dto.clienteId },
+      inicio: { chatId: dto.chatId ?? '', contatoId: dto.contatoId, telefone: dto.telefone, nomeContato: dto.nomeContato, clienteId: dto.clienteId },
       arquivo: { referencia: dto.arquivoId, nome: dto.arquivoNome, mimetype: dto.mimetype },
       leitura: dto.leitura,
     });

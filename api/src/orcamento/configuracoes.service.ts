@@ -93,7 +93,8 @@ export class ConfiguracoesService {
     return (
       candidatos.find((t) => normalizar(t.nome) === alvo) ??
       candidatos.find((t) => t.apelidos.some((a) => normalizar(a) === alvo)) ??
-      candidatos.find((t) => t.apelidos.some((a) => alvo.startsWith(normalizar(a)))) ??
+      // Palavra inteira: "PO" pega "PO PARA SUSPENSAO", não "POMADA".
+      candidatos.find((t) => t.apelidos.some((a) => normalizar(a) && alvo.startsWith(normalizar(a) + ' '))) ??
       null
     );
   }

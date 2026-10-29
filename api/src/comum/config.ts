@@ -40,7 +40,8 @@ export function lerConfig(env: NodeJS.ProcessEnv): ConfigApp {
       chave: env.CONCENTRA_API_KEY!.trim(),
       tempoLimite: Number(env.CONCENTRA_TEMPO_LIMITE_MS || 20_000),
     },
-    redefinirChaves: env.REDEFINIR_CHAVES?.trim().toLowerCase() === 'sim',
+    // Aceita sim/true/1, com ou sem aspas (painéis de VPS às vezes gravam as aspas no valor).
+    redefinirChaves: ['sim', 'true', '1'].includes((env.REDEFINIR_CHAVES ?? '').trim().replace(/^["']|["']$/g, '').toLowerCase()),
     sincronizacaoAutomatica: env.SINCRONIZACAO?.trim().toLowerCase() !== 'desligada',
   };
 }

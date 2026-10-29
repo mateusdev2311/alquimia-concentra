@@ -29,5 +29,5 @@ Levantadas em 28/10/2026, com consultas só de leitura à API `apiconc` da Alqui
 
 ## Para a Alquimia (confirmar)
 
-1. **Rio Preto ou Bragança?** A URA da Kentro fala em "entrega gratuita em Rio Preto" (Instagram `farmaciaalquimiarp`). Já a API é a `alquimiabraganca` e quase todos os clientes do ERP têm DDD 11 (Bragança Paulista). Se forem duas lojas, cada uma tem o seu Concentra, e a integração atual só enxerga a de Bragança.
+1. ~~Rio Preto ou Bragança?~~ **Resolvido (29/10/2026):** é uma loja só, em Bragança Paulista (resposta do Silvio). A mensagem de boas-vindas da URA da Kentro ainda fala em "entrega gratuita em Rio Preto", traz o Instagram `farmaciaalquimiarp` e usa o horário 8h–18h / sábado 8h–12h. O certo é 8h30–18h / sábado 8h30–13h. Corrigir a URA.
 2. Quem apaga no Concentra o orçamento de teste "TESTE KENTRO".

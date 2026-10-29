@@ -43,6 +43,8 @@ export class AcessoService implements OnModuleInit {
     if (this.config.redefinirChaves) {
       await this.prisma.configuracao.deleteMany({ where: { chave: CHAVE_CONFIG } });
       this.logger.warn('REDEFINIR_CHAVES: chaves apagadas. Ative de novo pela extensão de admin e depois tire a variável do Doca.');
+    } else if (process.env.REDEFINIR_CHAVES) {
+      this.logger.warn(`REDEFINIR_CHAVES está definida mas com valor não reconhecido; use "sim". Nada foi apagado.`);
     }
   }
 

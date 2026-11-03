@@ -1,4 +1,5 @@
 // Caminho até a API da farmácia, passo a passo, para o admin (e o TI) saberem onde a conexão para.
+import { execFile } from 'node:child_process';
 import { lookup } from 'node:dns/promises';
 import { connect } from 'node:net';
 import { motivoDeRede } from './concentra.client';
@@ -30,6 +31,21 @@ function portaAbre(host: string, porta: number): Promise<{ ok: boolean; detalhe:
   });
 }
 
+/** O ping pode nem existir na imagem do servidor, ou não ter permissão: isso não é sinal de bloqueio. */
+function pinga(ip: string): Promise<{ ok: boolean; detalhe: string }> {
+  const args = process.platform === 'win32' ? ['-n', '3', '-w', '2000', ip] : ['-c', '3', '-W', '2', ip];
+  return new Promise((resolver) => {
+    execFile('ping', args, { timeout: TEMPO }, (erro, saida, saidaErro) => {
+      if (!erro) {
+        const perda = /(\d+)%/.exec(saida)?.[1];
+        return resolver({ ok: true, detalhe: `respondeu${perda ? ` (${perda}% de perda)` : ''}` });
+      }
+      const indisponivel = (erro as NodeJS.ErrnoException).code === 'ENOENT' || /not permitted|permission|not found/i.test(saidaErro);
+      resolver({ ok: false, detalhe: indisponivel ? 'não deu para testar: o ping não está disponível neste servidor' : 'sem resposta' });
+    });
+  });
+}
+
 /** IP público com que este servidor sai para a internet. */
 async function ipDeSaida(): Promise<string | null> {
   try {
@@ -55,7 +71,14 @@ export async function diagnosticar(urlApi: string): Promise<Diagnostico> {
   }
 
   if (ip) {
-    const tcp = await portaAbre(ip, porta);
+    // Em paralelo com a porta, para não somar tempo ao teste.
+    const [tcp, ping, pingControle] = await Promise.all([portaAbre(ip, porta), pinga(ip), pinga('8.8.8.8')]);
+    passos.push({ nome: `Ping em ${ip}`, ...ping });
+    passos.push({
+      nome: 'Controle: ping em 8.8.8.8',
+      ok: pingControle.ok,
+      detalhe: pingControle.ok ? pingControle.detalhe : `${pingControle.detalhe}: sem esse controle, o ping acima não indica bloqueio`,
+    });
     passos.push({ nome: `Porta ${porta} em ${ip}`, ...tcp });
     if (!tcp.ok) {
       // Controle: a mesma porta num servidor público que aceita qualquer porta (portquiz.net).

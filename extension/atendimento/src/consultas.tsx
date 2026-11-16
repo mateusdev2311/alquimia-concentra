@@ -7,6 +7,7 @@ import type { Contexto } from './app';
 import { ListaOrcamentos } from './cliente';
 import { BuscaProduto } from './produto';
 import type { Orcamento, ProdutoAchado } from './tipos';
+import { VisualizadorReceita } from './visualizador';
 
 type Sub = 'receita' | 'orcamentos' | 'produtos' | 'f9' | 'prescritores';
 
@@ -146,7 +147,7 @@ function ConsultaReceita({ ctx }: { ctx: Contexto }) {
           (imagem.dados.mimetype === 'application/pdf' ? (
             <Aviso>A imagem desta receita é um PDF: abra no Concentra.</Aviso>
           ) : (
-            <img class="kt-imagem-receita" src={`data:${imagem.dados.mimetype};base64,${imagem.dados.base64}`} alt="Imagem da receita" />
+            <VisualizadorReceita mimetype={imagem.dados.mimetype} base64={imagem.dados.base64} />
           ))}
       </div>
     </Secao>

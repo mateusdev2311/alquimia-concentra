@@ -76,5 +76,16 @@ body { background: var(--kt-fundo); }
 .kt-resultado .kt-valor { font-size: 1.6em; font-weight: 700; letter-spacing: -0.02em; }
 .kt-mensagem { width: 100%; min-height: 180px; font: inherit; font-size: .88em; padding: 8px; border: 1px solid var(--kt-linha-forte); border-radius: 8px; background: var(--ext-color-bg); color: var(--ext-color-text); resize: vertical; }
 .kt-miniatura-receita { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: var(--kt-superficie-2); flex: none; display: inline-flex; align-items: center; justify-content: center; color: var(--ext-color-text-muted); }
-.kt-imagem-receita { width: 100%; border-radius: 10px; border: 1px solid var(--kt-linha); }
+.kt-receita-visor { margin-top: 8px; }
+.kt-receita-barra { display: flex; align-items: center; gap: 2px; margin-bottom: 4px; }
+.kt-receita-acao:hover:not(:disabled) { color: var(--ext-color-primary); }
+.kt-receita-acao:disabled { opacity: .4; cursor: default; }
+.kt-receita-zoom { min-width: 42px; text-align: center; font-size: .8em; color: var(--ext-color-text-muted); font-variant-numeric: tabular-nums; }
+.kt-receita-ajustar { margin-left: auto; font-size: .85em; }
+.kt-receita-area { border-radius: 10px; border: 1px solid var(--kt-linha); background: #fff; overflow: hidden; }
+.kt-receita-area img { display: block; max-width: none; cursor: zoom-in; user-select: none; }
+.kt-receita-ampliada { overflow: auto; max-height: 460px; cursor: grab; }
+.kt-receita-ampliada:active { cursor: grabbing; }
+.kt-receita-ampliada img { cursor: inherit; }
+.kt-receita-dica { margin: 4px 0 0; font-size: .75em; color: var(--ext-color-text-muted); text-align: center; }
 .kt-rodape { text-align: center; font-size: .72em; color: var(--ext-color-text-muted); margin-top: 6px; }

@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "id": "alquimia.concentra",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "name": "Alquimia × Concentra",
   "description": "No atendimento: cliente do Concentra pelo telefone, receitas, orçamentos, produtos e fórmulas, e a receita do chat virando orçamento com a IA da Kentro (sempre revisado pelo atendente).",
   "author": {

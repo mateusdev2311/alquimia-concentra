@@ -621,6 +621,7 @@ export function AbaOrcamento({ ctx, painel }: { ctx: Contexto; painel: Painel })
   const [criando, setCriando] = useState(false);
 
   useEffect(() => setLista(painel.rascunhos), [painel]);
+  const enviados = painel.enviados ?? [];
 
   const manual = async () => {
     setCriando(true);
@@ -696,6 +697,23 @@ export function AbaOrcamento({ ctx, painel }: { ctx: Contexto; painel: Painel })
                   {haQuanto(r.criadoEm)}
                 </div>
                 {r.erro && <Alerta texto={r.erro} erro={r.status === 'erro'} />}
+              </li>
+            ))}
+          </ul>
+        </Secao>
+      )}
+      {enviados.length > 0 && (
+        <Secao icone="check" titulo="Enviados neste atendimento" descricao="Abra para ver o número e mandar o resumo ao cliente de novo.">
+          <ul class="kt-lista">
+            {enviados.map((o) => (
+              <li key={o.id} class="kt-clicavel" onClick={() => setModo({ tipo: 'editar', id: o.id })}>
+                <div class="kt-linha-topo">
+                  <strong>{o.numero ? `Orçamento nº ${o.numero}` : 'Número não localizado'}</strong>
+                  <span>{o.valorLiquido != null ? dinheiro(o.valorLiquido) : ''}</span>
+                </div>
+                <div class="kt-muted">
+                  {ROTULO_ORIGEM[o.origem]} · {haQuanto(o.enviadoEm)}
+                </div>
               </li>
             ))}
           </ul>

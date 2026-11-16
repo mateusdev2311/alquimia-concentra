@@ -132,8 +132,8 @@ export function AbaTipos({ api }: { api: Api }) {
     >
       {semCodigo > 0 && (
         <Aviso>
-          {semCodigo} {semCodigo === 1 ? 'tipo está' : 'tipos estão'} sem código. Sem o código, o orçamento vai ao Concentra sem o campo “tipo” (a Concentra usa o padrão
-          dela). Peça a tabela de códigos à Concentra.
+          {semCodigo} {semCodigo === 1 ? 'tipo está' : 'tipos estão'} sem código. Orçamento com um tipo sem código não pode ser gravado (o Concentra dá erro
+          sem o campo “tipo”). Peça a tabela de códigos à Concentra.
         </Aviso>
       )}
       <label class="kt-campo" style={{ maxWidth: '360px' }}>

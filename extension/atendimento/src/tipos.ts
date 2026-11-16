@@ -51,11 +51,22 @@ export interface RascunhoResumo {
   arquivo: { nome?: string | null; mimetype?: string | null } | null;
 }
 
+/** Orçamento deste atendimento já gravado no Concentra. */
+export interface OrcamentoEnviadoResumo {
+  id: string;
+  origem: RascunhoResumo['origem'];
+  numero: string | null;
+  valorLiquido: number | null;
+  enviadoEm: string;
+}
+
 export interface Painel {
   status: Status;
   clientes: Cliente[];
   vinculado: boolean;
   rascunhos: RascunhoResumo[];
+  /** Pode faltar se a integração ainda estiver na versão anterior. */
+  enviados?: OrcamentoEnviadoResumo[];
   orcamentosRecentes: Orcamento[];
   orcamentosErro: string | null;
 }

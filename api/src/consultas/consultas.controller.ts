@@ -124,6 +124,24 @@ export class ConsultasController {
       take: 5,
       select: { id: true, status: true, origem: true, criadoEm: true, atualizadoEm: true, erro: true, arquivo: true },
     });
+    // Já gravados no Concentra: o atendente reabre para ver o número e reenviar a mensagem ao cliente.
+    const enviados = (
+      await this.prisma.rascunho.findMany({
+        where: { chatId: dto.chatId, status: 'enviado' },
+        orderBy: { atualizadoEm: 'desc' },
+        take: 5,
+        select: { id: true, origem: true, atualizadoEm: true, dados: true },
+      })
+    ).map((r) => {
+      const resultado = (r.dados as { resultado?: { numero?: string | null; valorLiquido?: number | null; enviadoEm?: string } } | null)?.resultado;
+      return {
+        id: r.id,
+        origem: r.origem,
+        numero: resultado?.numero ?? null,
+        valorLiquido: resultado?.valorLiquido ?? null,
+        enviadoEm: resultado?.enviadoEm ?? r.atualizadoEm.toISOString(),
+      };
+    });
     let orcamentosRecentes: Awaited<ReturnType<OrcamentosService['doCliente']>> = [];
     let orcamentosErro: string | null = null;
     if (clientes.length === 1) {
@@ -134,7 +152,7 @@ export class ConsultasController {
       }
       this.auditoria.registrar(req.usuario, 'cliente.identificar', clientes[0].id, { vinculado, chatId: dto.chatId });
     }
-    return { status: this.status.resumoRapido(), clientes, vinculado, rascunhos, orcamentosRecentes, orcamentosErro };
+    return { status: this.status.resumoRapido(), clientes, vinculado, rascunhos, enviados, orcamentosRecentes, orcamentosErro };
   }
 
   @Get('clientes')

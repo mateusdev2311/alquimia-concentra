@@ -123,6 +123,9 @@ export function validar(dados: DadosOrcamento): string[] {
   if (!dados.formulas?.length) erros.push('Inclua pelo menos uma fórmula ou produto.');
   dados.formulas?.forEach((f, i) => {
     const n = `Item ${i + 1}`;
+    // Sem "tipo" o Concentra quebra ("Erro de execução do ambiente harbour"), apesar de a documentação dizer que é opcional.
+    if (!f.forma) erros.push(`${n}: escolha o tipo no Concentra.`);
+    else if (!f.tipo) erros.push(`${n}: o tipo "${f.forma}" ainda não tem código. Peça ao administrador para cadastrar em Admin › Tipos.`);
     if (f.tipoItem === 'acabado') {
       const c = f.componentes[0];
       if (!c?.codigo) erros.push(`${n}: escolha o produto no cadastro.`);
@@ -140,6 +143,21 @@ export function validar(dados: DadosOrcamento): string[] {
     if (f.excipiente && !f.excipiente.codigo) erros.push(`${n}: o excipiente precisa de um produto do cadastro.`);
   });
   return erros;
+}
+
+/**
+ * Preenche o código do tipo pelo nome, com a tabela atual do admin: o rascunho pode ter sido
+ * montado antes de o código ser cadastrado. Código já escolhido no rascunho não muda.
+ */
+export function completarTipos(dados: DadosOrcamento, tipos: { nome: string; codigo: string }[]): DadosOrcamento {
+  return {
+    ...dados,
+    formulas: dados.formulas.map((f) => {
+      if (f.tipo || !f.forma) return f;
+      const codigo = tipos.find((t) => t.nome === f.forma)?.codigo?.trim();
+      return codigo ? { ...f, tipo: codigo } : f;
+    }),
+  };
 }
 
 /** Corpo do gerar_orcamento. Convênio fica vazio (a Concentra aplica o padrão dela). */

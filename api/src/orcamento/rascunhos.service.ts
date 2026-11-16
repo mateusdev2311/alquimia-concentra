@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Prisma, Rascunho } from '@prisma/client';
 import { AuditoriaService } from '../acesso/auditoria.service';
 import { Usuario } from '../acesso/chave.guard';
@@ -14,7 +14,7 @@ import { Casamento } from '../ia/casamento';
 import { interpretarLeitura, ReceitaLida } from '../ia/leitura';
 import { ConfiguracoesService } from './configuracoes.service';
 import { renderizar, valoresDaMensagem } from './mensagem';
-import { contarCorrigidos, corpoGerarOrcamento, DadosOrcamento, ResultadoEnvio, validar } from './modelo';
+import { completarTipos, contarCorrigidos, corpoGerarOrcamento, DadosOrcamento, ResultadoEnvio, validar } from './modelo';
 
 /** O arquivo da receita na Kentro. A imagem nunca passa por aqui: quem lê é a IA da Kentro. */
 export interface ArquivoReceita {
@@ -57,6 +57,7 @@ export class RascunhosService implements OnApplicationBootstrap {
   private readonly casamento: Casamento;
   /** Envios em andamento neste processo: dois cliques não geram dois orçamentos. */
   private readonly enviando = new Set<string>();
+  private readonly logger = new Logger('Orcamento');
 
   constructor(
     private readonly prisma: PrismaService,
@@ -283,7 +284,7 @@ export class RascunhosService implements OnApplicationBootstrap {
       const r = await this.obter(id);
       if (r.status === 'enviado') throw new ErroApi(409, 'JA_ENVIADO', 'Este orçamento já foi enviado ao Concentra.');
       if (r.status === 'lendo' || r.status === 'descartado') throw new ErroApi(409, 'RASCUNHO_FECHADO', 'Este orçamento não pode ser enviado agora.');
-      const dados = r.dados as unknown as DadosOrcamento;
+      const dados = completarTipos(r.dados as unknown as DadosOrcamento, (await this.configuracoes.ler()).tipos);
       if (dados.envioIncerto && !forcar) {
         throw new ErroApi(
           409,
@@ -352,17 +353,27 @@ export class RascunhosService implements OnApplicationBootstrap {
     }
   }
 
-  /** O gerar_orcamento não devolve o número: procura o orçamento mais novo do paciente com o mesmo valor. */
+  /**
+   * O gerar_orcamento não devolve o número: procura nos orçamentos mais novos um com o mesmo valor.
+   * O nome do paciente desempata, mas não é exigido (o Concentra pode gravar o cliente com outro nome,
+   * por exemplo o do cadastro achado pelo telefone). Sem o mesmo valor, não chuta: número errado na
+   * mensagem ao cliente é pior que "não localizado".
+   */
   private async procurarNumero(paciente: string, valorLiquido: number | null, valorBruto: number | null): Promise<string | null> {
     try {
       const alvo = normalizar(paciente);
       const recentes = await this.orcamentos.recentes(true);
-      const doPaciente = recentes.filter((o) => normalizar(o.cliente) === alvo);
-      const mesmoValor = doPaciente.filter(
-        (o) => o.valor != null && [valorLiquido, valorBruto].some((v) => v != null && Math.abs(o.valor! - v) < 0.011),
-      );
-      return (mesmoValor[0] ?? doPaciente[0])?.numero ?? null;
-    } catch {
+      const mesmoValor = recentes
+        .slice(0, 30)
+        .filter((o) => o.valor != null && [valorLiquido, valorBruto].some((v) => v != null && Math.abs(o.valor! - v) < 0.011));
+      const achado = mesmoValor.find((o) => normalizar(o.cliente) === alvo) ?? (mesmoValor.length === 1 ? mesmoValor[0] : null);
+      if (!achado) {
+        // Sem dados do paciente no log: só o que ajuda a entender por que não achou.
+        this.logger.warn(`número do orçamento não localizado: ${recentes.length} na listagem, ${mesmoValor.length} com o mesmo valor (${valorLiquido ?? '-'} / ${valorBruto ?? '-'})`);
+      }
+      return achado?.numero ?? null;
+    } catch (erro) {
+      this.logger.warn(`número do orçamento não localizado: a listagem falhou (${erro instanceof Error ? erro.message : 'erro'})`);
       return null;
     }
   }

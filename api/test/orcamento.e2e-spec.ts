@@ -19,7 +19,7 @@ const DADOS = {
       id: 'f1',
       tipoItem: 'manipulado',
       forma: 'Cápsulas',
-      tipo: null,
+      tipo: '010100',
       qsp: 60,
       unidadeQsp: 'caps',
       dose: null,
@@ -142,6 +142,11 @@ describe('envio ao Concentra', () => {
     const enviado = await prisma.orcamentoEnviado.findFirstOrThrow();
     expect(enviado).toMatchObject({ numero: '0964601', usuarioId: '7', usuarioNome: 'Thaís', formulas: 1, componentes: 1, origem: 'manual' });
 
+    // Some de "em montagem" e aparece em "enviados" no painel do atendimento.
+    const painel = await request(app.getHttpServer()).post('/v1/painel').set(H).send({ chatId: '55' }).expect(201);
+    expect(painel.body.rascunhos).toHaveLength(0);
+    expect(painel.body.enviados).toEqual([expect.objectContaining({ id, numero: '0964601', valorLiquido: 142.9 })]);
+
     // De novo: não grava outra vez.
     await request(app.getHttpServer()).post(`/v1/rascunhos/${id}/enviar`).set(H).send({ confirmado: true }).expect(409);
     expect(chamadasGerar()).toHaveLength(1);
@@ -161,6 +166,15 @@ describe('envio ao Concentra', () => {
 
     await request(app.getHttpServer()).post(`/v1/rascunhos/${id}/enviar`).set(H).send({ confirmado: true, forcar: true }).expect(201);
     expect(chamadasGerar()).toHaveLength(2);
+  });
+
+  it('tipo sem código não chega à Concentra', async () => {
+    const criado = await request(app.getHttpServer()).post('/v1/rascunhos').set(H).send({ chatId: '57' }).expect(201);
+    const semCodigo = { ...DADOS, formulas: DADOS.formulas.map((f) => ({ ...f, tipo: null })) };
+    await request(app.getHttpServer()).put(`/v1/rascunhos/${criado.body.id}`).set(H).send({ dados: semCodigo }).expect(200);
+    const r = await request(app.getHttpServer()).post(`/v1/rascunhos/${criado.body.id}/enviar`).set(H).send({ confirmado: true }).expect(422);
+    expect(r.body.erro.mensagem).toContain('ainda não tem código');
+    expect(chamadasGerar()).toHaveLength(0);
   });
 
   it('orçamento incompleto não chega à Concentra', async () => {

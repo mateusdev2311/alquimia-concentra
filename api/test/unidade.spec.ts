@@ -4,7 +4,7 @@ import { chaveTelefone, normalizar } from '../src/comum/texto';
 import { mensagemDeErro } from '../src/concentra/concentra.client';
 import { cliente, formulaF9, itemOrcamento, orcamento, produtoCadastro, produtoDeDescricao, valorMonetario } from '../src/concentra/formatos';
 import { MODELO_PADRAO, renderizar, valoresDaMensagem } from '../src/orcamento/mensagem';
-import { corpoGerarOrcamento, DadosOrcamento, unidadeNormalizada, validar } from '../src/orcamento/modelo';
+import { completarTipos, corpoGerarOrcamento, DadosOrcamento, unidadeNormalizada, validar } from '../src/orcamento/modelo';
 
 describe('telefone', () => {
   it('casa o número do WhatsApp com o cadastro com e sem o nono dígito', () => {
@@ -195,7 +195,27 @@ describe('orçamento', () => {
         expect.stringContaining('escolha o produto no cadastro'),
       ]),
     );
-    expect(validar(dados())).toEqual([]);
+    const completo = dados();
+    completo.formulas[1].tipo = '090000';
+    expect(validar(completo)).toEqual([]);
+  });
+
+  it('não envia tipo sem código (o Concentra quebra sem o campo "tipo")', () => {
+    const d = dados();
+    expect(validar(d)).toEqual([expect.stringContaining('"Produto balcão" ainda não tem código')]);
+    d.formulas[1].forma = null;
+    expect(validar(d)).toEqual([expect.stringContaining('escolha o tipo')]);
+  });
+
+  it('completa o código do tipo cadastrado depois de o rascunho ser montado', () => {
+    const d = dados();
+    d.formulas[0].tipo = null;
+    const completo = completarTipos(d, [
+      { nome: 'Cápsulas', codigo: '010100' },
+      { nome: 'Produto balcão', codigo: '' },
+    ]);
+    expect(completo.formulas.map((f) => f.tipo)).toEqual(['010100', null]);
+    expect(d.formulas[0].tipo).toBeNull();
   });
 
   it('normaliza unidades escritas por extenso', () => {
